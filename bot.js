@@ -1622,6 +1622,30 @@ async function startConfigUI() {
           isoWeek: getIsoWeek(),
         };
         sendJSON(status);
+      } else if (req.method === 'GET' && req.url.startsWith('/api/thumb')) {
+        const u = new URL(req.url, 'http://x');
+        const id = u.searchParams.get('id');
+        if (!id) {
+          res.writeHead(400); res.end('missing id'); return;
+        }
+        try {
+          // 用 Eagle REST API（port 41595）拿縮圖的本機檔案路徑
+          const eg = await fetch(`http://localhost:41595/api/item/thumbnail?id=${encodeURIComponent(id)}`);
+          const json = await eg.json();
+          if (json.status !== 'success' || !json.data) {
+            res.writeHead(404); res.end('no thumb'); return;
+          }
+          const filePath = decodeURIComponent(json.data);
+          if (!fs.existsSync(filePath)) {
+            res.writeHead(404); res.end('thumb file missing'); return;
+          }
+          const ext = path.extname(filePath).slice(1).toLowerCase();
+          const mime = ({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' })[ext] || 'application/octet-stream';
+          res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'public, max-age=3600' });
+          fs.createReadStream(filePath).pipe(res);
+        } catch (e) {
+          res.writeHead(500); res.end(e.message);
+        }
       } else if (req.method === 'GET' && req.url.startsWith('/api/recent')) {
         const u = new URL(req.url, 'http://x');
         const days = parseInt(u.searchParams.get('days') || '7', 10);

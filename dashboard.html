@@ -137,13 +137,20 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    position: relative;
   }
   .thumb .media {
     width: 100%;
     aspect-ratio: 16 / 10;
-    background: #000;
+    background: #11141a;
     object-fit: cover;
     display: block;
+  }
+  .thumb video.media {
+    position: absolute;
+    top: 0; left: 0;
+    z-index: 2;
+    display: none;
   }
   .thumb .meta {
     padding: 8px 10px;
@@ -561,25 +568,40 @@ async function loadRecent() {
       return;
     }
     cont.innerHTML = items.map((it) => {
-      const url = it.sourceUrl || '';
-      let mediaTag = '';
-      if (it.isVideo && url) {
-        mediaTag = `<video class="media" muted loop playsinline preload="metadata" onmouseenter="this.play()" onmouseleave="this.pause();this.currentTime=0" src="${escapeHtml(url)}"></video>`;
-      } else if (url) {
-        mediaTag = `<img class="media" loading="lazy" src="${escapeHtml(url)}" alt="${escapeHtml(it.name)}" onerror="this.style.opacity=0.2">`;
-      } else {
-        mediaTag = `<div class="media" style="display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px">無預覽</div>`;
-      }
+      // 統一用 Eagle 內建縮圖（避開 CDN referer 限制 + video 無 poster 黑底）
+      const thumbUrl = `/api/thumb?id=${encodeURIComponent(it.id)}`;
+      const playable = it.isVideo && it.sourceUrl;
+      const videoFallback = playable
+        ? `<video class="media play-on-hover" muted loop playsinline preload="none" data-src="${escapeHtml(it.sourceUrl)}"></video>`
+        : '';
       return `
-        <div class="thumb">
-          ${mediaTag}
+        <div class="thumb" ${playable ? 'data-playable="1"' : ''}>
+          <img class="media" loading="lazy" src="${thumbUrl}" alt="${escapeHtml(it.name)}" onerror="this.style.opacity=0.2">
+          ${videoFallback}
           <div class="meta">
             <div class="name" title="${escapeHtml(it.name)}">${escapeHtml(it.name)}</div>
-            <div class="sub"><span class="badge ${it.source}">${it.source}</span>${escapeHtml(it.date || '')}</div>
+            <div class="sub">
+              <span class="badge ${it.source}">${it.source}</span>
+              ${escapeHtml(it.date || '')}
+              ${it.isVideo ? '<span class="badge other" style="margin-left:6px">▶ video</span>' : ''}
+            </div>
           </div>
         </div>
       `;
     }).join('');
+    // Hover 時把 video 拉上來播
+    cont.querySelectorAll('.thumb[data-playable]').forEach((card) => {
+      const video = card.querySelector('video');
+      card.addEventListener('mouseenter', () => {
+        if (!video.src) video.src = video.dataset.src;
+        video.style.display = 'block';
+        video.play().catch(() => {});
+      });
+      card.addEventListener('mouseleave', () => {
+        video.pause();
+        video.style.display = 'none';
+      });
+    });
   } catch (e) {
     cont.innerHTML = `<div class="empty">載入失敗：${escapeHtml(e.message)}</div>`;
   }
