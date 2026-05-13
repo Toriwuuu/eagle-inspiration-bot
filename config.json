@@ -1,8 +1,21 @@
 {
-  "source": "sotd",
-  "maxSites": 7,
-  "elementsPerSite": 4,
-  "eagleFolderName": "Awwwards",
-  "extraTags": ["awwwards", "sotd"],
-  "skipIfLiveUrlExists": true
+  "awwwards": {
+    "enabled": true,
+    "source": "sotd",
+    "maxSites": 7,
+    "elementsPerSite": 4,
+    "eagleFolderName": "Awwwards",
+    "extraTags": ["awwwards", "sotd"],
+    "skipIfLiveUrlExists": true
+  },
+  "mobbin": {
+    "enabled": true,
+    "platform": "ios",
+    "source": "latest",
+    "maxApps": 5,
+    "screensPerApp": 3,
+    "eagleFolderName": "Mobbin",
+    "extraTags": ["mobbin"],
+    "skipIfSourceUrlExists": true
+  }
 }

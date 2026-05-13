@@ -1,0 +1,1161 @@
+{
+  "probedAt": "2026-05-13T05:02:44.136Z",
+  "pages": {
+    "home": {
+      "status": 200,
+      "tried": "https://mobbin.com",
+      "url": "https://mobbin.com/discover/apps/ios/latest",
+      "title": "Discover iOS apps | Mobbin",
+      "anchorSample": [
+        {
+          "text": "Mobbin",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Sites",
+          "href": "/discover/sites/latest"
+        },
+        {
+          "text": "",
+          "href": "/saved/mobile/screens"
+        },
+        {
+          "text": "",
+          "href": "/community/mobile/featured"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Sites",
+          "href": "/discover/sites/latest"
+        },
+        {
+          "text": "Travel & Transportation",
+          "href": "/search/apps/ios?content_type=apps&sort=publishedAt&filter=appCategories.Travel+%26+Transportation"
+        },
+        {
+          "text": "Health & Fitness",
+          "href": "/search/apps/ios?content_type=apps&sort=publishedAt&filter=appCategories.Health+%26+Fitness"
+        },
+        {
+          "text": "Lifestyle",
+          "href": "/search/apps/ios?content_type=apps&sort=publishedAt&filter=appCategories.Lifestyle"
+        },
+        {
+          "text": "Shopping",
+          "href": "/search/apps/ios?content_type=apps&sort=publishedAt&filter=appCategories.Shopping"
+        },
+        {
+          "text": "Food & Drink",
+          "href": "/search/apps/ios?content_type=apps&sort=publishedAt&filter=appCategories.Food+%26+Drink"
+        },
+        {
+          "text": "Payment Method",
+          "href": "/search/apps/ios?content_type=screens&sort=trending&filter=screenPatterns.Payment+Method"
+        },
+        {
+          "text": "Signup",
+          "href": "/search/apps/ios?content_type=screens&sort=trending&filter=screenPatterns.Signup"
+        },
+        {
+          "text": "Subscription & Paywall",
+          "href": "/search/apps/ios?content_type=screens&sort=trending&filter=screenPatterns.Subscription+%26+Paywall"
+        },
+        {
+          "text": "Welcome & Get Started",
+          "href": "/search/apps/ios?content_type=screens&sort=trending&filter=screenPatterns.Welcome+%26+Get+Started"
+        },
+        {
+          "text": "My Account & Profile",
+          "href": "/search/apps/ios?content_type=screens&sort=trending&filter=screenPatterns.My+Account+%26+Profile"
+        },
+        {
+          "text": "Card",
+          "href": "/search/apps/ios?content_type=ui-elements&sort=trending&filter=screenElements.Card"
+        },
+        {
+          "text": "Progress Indicator",
+          "href": "/search/apps/ios?content_type=ui-elements&sort=trending&filter=screenElements.Progress+Indicator"
+        },
+        {
+          "text": "Button",
+          "href": "/search/apps/ios?content_type=ui-elements&sort=trending&filter=screenElements.Button"
+        },
+        {
+          "text": "Banner",
+          "href": "/search/apps/ios?content_type=ui-elements&sort=trending&filter=screenElements.Banner"
+        },
+        {
+          "text": "Bottom Sheet",
+          "href": "/search/apps/ios?content_type=ui-elements&sort=trending&filter=screenElements.Bottom+Sheet"
+        },
+        {
+          "text": "Subscribing & Upgrading",
+          "href": "/search/apps/ios?content_type=flows&sort=trending&filter=flowActions.Subscribing+%26+Upgrading"
+        },
+        {
+          "text": "Onboarding",
+          "href": "/search/apps/ios?content_type=flows&sort=trending&filter=flowActions.Onboarding"
+        },
+        {
+          "text": "Logging In",
+          "href": "/search/apps/ios?content_type=flows&sort=trending&filter=flowActions.Logging+In"
+        },
+        {
+          "text": "Filtering & Sorting",
+          "href": "/search/apps/ios?content_type=flows&sort=trending&filter=flowActions.Filtering+%26+Sorting"
+        },
+        {
+          "text": "Editing Profile",
+          "href": "/search/apps/ios?content_type=flows&sort=trending&filter=flowActions.Editing+Profile"
+        },
+        {
+          "text": "iOS",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Web",
+          "href": "/discover/apps/web/latest"
+        },
+        {
+          "text": "Latest",
+          "href": "/discover/apps/ios/latest"
+        }
+      ],
+      "imgSample": [
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/1f75b933-0978-4ced-89be-20770f166aa5.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Revolut logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/c8bc85ff-d6d8-4af8-9afa-b5f6c734969d.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Wise logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/7d0f5316-c217-44aa-886e-b656f5312e6c.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Duolingo logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/258759b8-635c-4971-80b0-ec7bf22ebac7.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Cash App logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/c09eddb7-eae6-40de-99f8-5e738fae8411.png?f=png&w=400&q=85&fit=shrink-cove",
+          "alt": "Stripe Dashboard logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/85e41e34-dcff-43a3-bf40-5ed2c83da1de.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Airbnb logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/0a9efa4e-0ea8-4c61-8427-03e5bd7accfd.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Instagram logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/sites/5da58415-79ab-46b3-a5b2-baf6bc036c29.jpeg?f=png&w=400&q=85&fit=shrink-cover",
+          "alt": "Atlas Card logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/7876def4-d8aa-42dc-82f9-2267405dc54d.png?f=png&w=400&q=85&fit=shrink-cove",
+          "alt": "Employment Hero logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/sites/ab528327-8b36-4c19-8341-5d156647c8f6.png?f=png&w=400&q=85&fit=shrink-cover",
+          "alt": "Superhuman logo"
+        }
+      ],
+      "videoSample": [
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/video/mobbin.com/prod/content/app_flow_videos/82c7bd75-f813-494e-b4b7-3e5d0ec37bc2.mp4?f=mp4-h264&w=1920&hp=1920&sh=100&mute=true&p=mhq&q=73&gop=300&sd=false&rf=6&bf=7&qz=-1&if=0&bo=-1&a=%2Fvideo.mp4",
+          "poster": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_flow_videos/82c7bd75-f813-494e-b4b7-3e5d0ec37bc2.mp4?f=webp&w=1920&q=85&fit=shrink-cover&t=0",
+          "sources": [],
+          "dataAttrs": {}
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/video/mobbin.com/prod/content/app_flow_videos/b6eee83e-83f0-4495-9e1e-aaa28762dd9b.mp4?f=mp4-h264&w=1920&hp=1920&sh=100&mute=true&p=mhq&q=73&gop=300&sd=false&rf=6&bf=7&qz=-1&if=0&bo=-1&a=%2Fvideo.mp4",
+          "poster": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_flow_videos/b6eee83e-83f0-4495-9e1e-aaa28762dd9b.mp4?f=webp&w=1920&q=85&fit=shrink-cover&t=0",
+          "sources": [],
+          "dataAttrs": {}
+        }
+      ],
+      "appLinks": [
+        {
+          "text": "Mobbin",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Travel & Transportation",
+          "href": "/search/apps/ios?content_type=apps&sort=publishedAt&filter=appCategories.Travel+%26+Transportation"
+        },
+        {
+          "text": "Health & Fitness",
+          "href": "/search/apps/ios?content_type=apps&sort=publishedAt&filter=appCategories.Health+%26+Fitness"
+        },
+        {
+          "text": "Lifestyle",
+          "href": "/search/apps/ios?content_type=apps&sort=publishedAt&filter=appCategories.Lifestyle"
+        },
+        {
+          "text": "Shopping",
+          "href": "/search/apps/ios?content_type=apps&sort=publishedAt&filter=appCategories.Shopping"
+        },
+        {
+          "text": "Food & Drink",
+          "href": "/search/apps/ios?content_type=apps&sort=publishedAt&filter=appCategories.Food+%26+Drink"
+        },
+        {
+          "text": "Payment Method",
+          "href": "/search/apps/ios?content_type=screens&sort=trending&filter=screenPatterns.Payment+Method"
+        },
+        {
+          "text": "Signup",
+          "href": "/search/apps/ios?content_type=screens&sort=trending&filter=screenPatterns.Signup"
+        },
+        {
+          "text": "Subscription & Paywall",
+          "href": "/search/apps/ios?content_type=screens&sort=trending&filter=screenPatterns.Subscription+%26+Paywall"
+        },
+        {
+          "text": "Welcome & Get Started",
+          "href": "/search/apps/ios?content_type=screens&sort=trending&filter=screenPatterns.Welcome+%26+Get+Started"
+        },
+        {
+          "text": "My Account & Profile",
+          "href": "/search/apps/ios?content_type=screens&sort=trending&filter=screenPatterns.My+Account+%26+Profile"
+        },
+        {
+          "text": "Card",
+          "href": "/search/apps/ios?content_type=ui-elements&sort=trending&filter=screenElements.Card"
+        },
+        {
+          "text": "Progress Indicator",
+          "href": "/search/apps/ios?content_type=ui-elements&sort=trending&filter=screenElements.Progress+Indicator"
+        }
+      ]
+    },
+    "apps_ios_latest": {
+      "status": 404,
+      "tried": "https://mobbin.com/apps/ios/latest",
+      "url": "https://mobbin.com/apps/ios/latest",
+      "title": "",
+      "h1": "Page not found",
+      "anchorSample": [
+        {
+          "text": "Mobbin",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Sites",
+          "href": "/discover/sites/latest"
+        },
+        {
+          "text": "",
+          "href": "/saved/mobile/screens"
+        },
+        {
+          "text": "",
+          "href": "/community/mobile/featured"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Sites",
+          "href": "/discover/sites/latest"
+        },
+        {
+          "text": "discover page",
+          "href": "/"
+        },
+        {
+          "text": "404 section references",
+          "href": "/search/sites?content_type=sections&filter=pageAndSectionPatterns.404"
+        },
+        {
+          "text": "Explore",
+          "href": "/explore"
+        },
+        {
+          "text": "Glossary",
+          "href": "/glossary"
+        },
+        {
+          "text": "Pricing",
+          "href": "/pricing"
+        },
+        {
+          "text": "Changelog",
+          "href": "/changelog"
+        },
+        {
+          "text": "Blog",
+          "href": "/blog"
+        },
+        {
+          "text": "Colors",
+          "href": "/colors"
+        },
+        {
+          "text": "Contact",
+          "href": "mailto:support@mobbin.com"
+        },
+        {
+          "text": "Help center",
+          "href": "https://help.mobbin.com"
+        },
+        {
+          "text": "Careers",
+          "href": "https://careers.mobbin.com"
+        },
+        {
+          "text": "Merch",
+          "href": "https://merch.mobbin.com"
+        },
+        {
+          "text": "X (Twitter)",
+          "href": "https://x.com/mobbin"
+        },
+        {
+          "text": "LinkedIn",
+          "href": "https://linkedin.com/company/mobbin"
+        },
+        {
+          "text": "Privacy Policy",
+          "href": "/privacy"
+        },
+        {
+          "text": "Terms",
+          "href": "/terms"
+        },
+        {
+          "text": "Privacy policy",
+          "href": "/privacy"
+        },
+        {
+          "text": "Terms",
+          "href": "/terms"
+        }
+      ],
+      "imgSample": [
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/85e41e34-dcff-43a3-bf40-5ed2c83da1de.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Airbnb logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/f1f539e8-8591-4915-bf8c-3bc0ccb80d25.jpg?f=png&w=400&q=85&fit=shrink-cove",
+          "alt": "Headspace logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/c09eddb7-eae6-40de-99f8-5e738fae8411.png?f=png&w=400&q=85&fit=shrink-cove",
+          "alt": "Stripe Dashboard logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/d6a80823-6d30-4525-9d0b-e5d101dd79f8.jpg?f=png&w=400&q=85&fit=shrink-cove",
+          "alt": "Uber logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/b91ff3b1-047e-477c-8c4f-96b7b4126f0f.png?f=png&w=400&q=85&fit=shrink-cove",
+          "alt": "Coinbase logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/c8bc85ff-d6d8-4af8-9afa-b5f6c734969d.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Wise logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/d95c2726-038c-4c81-a6b2-59dbe1b69e35.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Cal AI logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/sites/9748dcd0-c746-4957-845d-cc23c74d4633.png?f=png&w=400&q=85&fit=shrink-cover",
+          "alt": "Ramp logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/sites/f3ebb2f0-fe3c-4ef5-9e75-23c26d27784d.png?f=png&w=400&q=85&fit=shrink-cover",
+          "alt": "Sana logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/45faf0fb-adef-4939-8957-ca67763ef797.png?f=png&w=400&q=85&fit=shrink-cove",
+          "alt": "Dovetail logo"
+        }
+      ],
+      "videoSample": [],
+      "appLinks": [
+        {
+          "text": "Mobbin",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        }
+      ]
+    },
+    "apps_ios": {
+      "status": 404,
+      "tried": "https://mobbin.com/apps/ios",
+      "url": "https://mobbin.com/apps/ios",
+      "title": "",
+      "h1": "Page not found",
+      "anchorSample": [
+        {
+          "text": "Mobbin",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Sites",
+          "href": "/discover/sites/latest"
+        },
+        {
+          "text": "",
+          "href": "/saved/mobile/screens"
+        },
+        {
+          "text": "",
+          "href": "/community/mobile/featured"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Sites",
+          "href": "/discover/sites/latest"
+        },
+        {
+          "text": "discover page",
+          "href": "/"
+        },
+        {
+          "text": "404 section references",
+          "href": "/search/sites?content_type=sections&filter=pageAndSectionPatterns.404"
+        },
+        {
+          "text": "Explore",
+          "href": "/explore"
+        },
+        {
+          "text": "Glossary",
+          "href": "/glossary"
+        },
+        {
+          "text": "Pricing",
+          "href": "/pricing"
+        },
+        {
+          "text": "Changelog",
+          "href": "/changelog"
+        },
+        {
+          "text": "Blog",
+          "href": "/blog"
+        },
+        {
+          "text": "Colors",
+          "href": "/colors"
+        },
+        {
+          "text": "Contact",
+          "href": "mailto:support@mobbin.com"
+        },
+        {
+          "text": "Help center",
+          "href": "https://help.mobbin.com"
+        },
+        {
+          "text": "Careers",
+          "href": "https://careers.mobbin.com"
+        },
+        {
+          "text": "Merch",
+          "href": "https://merch.mobbin.com"
+        },
+        {
+          "text": "X (Twitter)",
+          "href": "https://x.com/mobbin"
+        },
+        {
+          "text": "LinkedIn",
+          "href": "https://linkedin.com/company/mobbin"
+        },
+        {
+          "text": "Privacy Policy",
+          "href": "/privacy"
+        },
+        {
+          "text": "Terms",
+          "href": "/terms"
+        },
+        {
+          "text": "Privacy policy",
+          "href": "/privacy"
+        },
+        {
+          "text": "Terms",
+          "href": "/terms"
+        }
+      ],
+      "imgSample": [
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/7d0f5316-c217-44aa-886e-b656f5312e6c.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Duolingo logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/f73baace-526f-43e2-aa7f-581937c9ca68.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Spotify logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/0a9efa4e-0ea8-4c61-8427-03e5bd7accfd.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Instagram logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/85e41e34-dcff-43a3-bf40-5ed2c83da1de.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Airbnb logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/1f75b933-0978-4ced-89be-20770f166aa5.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Revolut logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/258759b8-635c-4971-80b0-ec7bf22ebac7.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Cash App logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/b91ff3b1-047e-477c-8c4f-96b7b4126f0f.png?f=png&w=400&q=85&fit=shrink-cove",
+          "alt": "Coinbase logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/products/179e7706-89da-44f9-a305-c874322d0f59.jpeg?f=png&w=400&q=85&fit=shrink-cove",
+          "alt": "Antimetal logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/sites/5da58415-79ab-46b3-a5b2-baf6bc036c29.jpeg?f=png&w=400&q=85&fit=shrink-cover",
+          "alt": "Atlas Card logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/sites/ab528327-8b36-4c19-8341-5d156647c8f6.png?f=png&w=400&q=85&fit=shrink-cover",
+          "alt": "Superhuman logo"
+        }
+      ],
+      "videoSample": [],
+      "appLinks": [
+        {
+          "text": "Mobbin",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        }
+      ]
+    },
+    "discover_ios": {
+      "status": 404,
+      "tried": "https://mobbin.com/discover/ios",
+      "url": "https://mobbin.com/discover/ios",
+      "title": "Mobbin — UI & UX design inspiration for mobile & web apps",
+      "h1": "Page not found",
+      "anchorSample": [
+        {
+          "text": "Mobbin",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Sites",
+          "href": "/discover/sites/latest"
+        },
+        {
+          "text": "",
+          "href": "/saved/mobile/screens"
+        },
+        {
+          "text": "",
+          "href": "/community/mobile/featured"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Sites",
+          "href": "/discover/sites/latest"
+        },
+        {
+          "text": "discover page",
+          "href": "/"
+        },
+        {
+          "text": "404 section references",
+          "href": "/search/sites?content_type=sections&filter=pageAndSectionPatterns.404"
+        },
+        {
+          "text": "Explore",
+          "href": "/explore"
+        },
+        {
+          "text": "Glossary",
+          "href": "/glossary"
+        },
+        {
+          "text": "Pricing",
+          "href": "/pricing"
+        },
+        {
+          "text": "Changelog",
+          "href": "/changelog"
+        },
+        {
+          "text": "Blog",
+          "href": "/blog"
+        },
+        {
+          "text": "Colors",
+          "href": "/colors"
+        },
+        {
+          "text": "Contact",
+          "href": "mailto:support@mobbin.com"
+        },
+        {
+          "text": "Help center",
+          "href": "https://help.mobbin.com"
+        },
+        {
+          "text": "Careers",
+          "href": "https://careers.mobbin.com"
+        },
+        {
+          "text": "Merch",
+          "href": "https://merch.mobbin.com"
+        },
+        {
+          "text": "X (Twitter)",
+          "href": "https://x.com/mobbin"
+        },
+        {
+          "text": "LinkedIn",
+          "href": "https://linkedin.com/company/mobbin"
+        },
+        {
+          "text": "Privacy Policy",
+          "href": "/privacy"
+        },
+        {
+          "text": "Terms",
+          "href": "/terms"
+        },
+        {
+          "text": "Privacy policy",
+          "href": "/privacy"
+        },
+        {
+          "text": "Terms",
+          "href": "/terms"
+        }
+      ],
+      "imgSample": [
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/258759b8-635c-4971-80b0-ec7bf22ebac7.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Cash App logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/e342b093-798b-4dd6-9473-bf9d0145b8c0.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Monzo logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/d95c2726-038c-4c81-a6b2-59dbe1b69e35.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Cal AI logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/7d0f5316-c217-44aa-886e-b656f5312e6c.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Duolingo logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/f1f539e8-8591-4915-bf8c-3bc0ccb80d25.jpg?f=png&w=400&q=85&fit=shrink-cove",
+          "alt": "Headspace logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/85e41e34-dcff-43a3-bf40-5ed2c83da1de.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Airbnb logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/0a9efa4e-0ea8-4c61-8427-03e5bd7accfd.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Instagram logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/products/179e7706-89da-44f9-a305-c874322d0f59.jpeg?f=png&w=400&q=85&fit=shrink-cove",
+          "alt": "Antimetal logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/sites/f3ebb2f0-fe3c-4ef5-9e75-23c26d27784d.png?f=png&w=400&q=85&fit=shrink-cover",
+          "alt": "Sana logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/sites/4fd1632c-48b2-44c9-98b9-cd8504b0b816.jpg?f=png&w=400&q=85&fit=shrink-cover",
+          "alt": "Linear logo"
+        }
+      ],
+      "videoSample": [],
+      "appLinks": [
+        {
+          "text": "Mobbin",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        }
+      ]
+    },
+    "browse_ios": {
+      "status": 200,
+      "tried": "https://mobbin.com/browse/ios/apps",
+      "url": "https://mobbin.com/discover/apps/ios/latest",
+      "title": "Discover iOS apps | Mobbin",
+      "anchorSample": [
+        {
+          "text": "Mobbin",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Sites",
+          "href": "/discover/sites/latest"
+        },
+        {
+          "text": "",
+          "href": "/saved/mobile/screens"
+        },
+        {
+          "text": "",
+          "href": "/community/mobile/featured"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Sites",
+          "href": "/discover/sites/latest"
+        },
+        {
+          "text": "Travel & Transportation",
+          "href": "/search/apps/ios?content_type=apps&sort=publishedAt&filter=appCategories.Travel+%26+Transportation"
+        },
+        {
+          "text": "Health & Fitness",
+          "href": "/search/apps/ios?content_type=apps&sort=publishedAt&filter=appCategories.Health+%26+Fitness"
+        },
+        {
+          "text": "Education",
+          "href": "/search/apps/ios?content_type=apps&sort=publishedAt&filter=appCategories.Education"
+        },
+        {
+          "text": "Finance",
+          "href": "/search/apps/ios?content_type=apps&sort=publishedAt&filter=appCategories.Finance"
+        },
+        {
+          "text": "Shopping",
+          "href": "/search/apps/ios?content_type=apps&sort=publishedAt&filter=appCategories.Shopping"
+        },
+        {
+          "text": "Dashboard",
+          "href": "/search/apps/ios?content_type=screens&sort=trending&filter=screenPatterns.Dashboard"
+        },
+        {
+          "text": "Welcome & Get Started",
+          "href": "/search/apps/ios?content_type=screens&sort=trending&filter=screenPatterns.Welcome+%26+Get+Started"
+        },
+        {
+          "text": "Home",
+          "href": "/search/apps/ios?content_type=screens&sort=trending&filter=screenPatterns.Home"
+        },
+        {
+          "text": "Subscription & Paywall",
+          "href": "/search/apps/ios?content_type=screens&sort=trending&filter=screenPatterns.Subscription+%26+Paywall"
+        },
+        {
+          "text": "Login",
+          "href": "/search/apps/ios?content_type=screens&sort=trending&filter=screenPatterns.Login"
+        },
+        {
+          "text": "Bottom Sheet",
+          "href": "/search/apps/ios?content_type=ui-elements&sort=trending&filter=screenElements.Bottom+Sheet"
+        },
+        {
+          "text": "Dropdown Menu",
+          "href": "/search/apps/ios?content_type=ui-elements&sort=trending&filter=screenElements.Dropdown+Menu"
+        },
+        {
+          "text": "Banner",
+          "href": "/search/apps/ios?content_type=ui-elements&sort=trending&filter=screenElements.Banner"
+        },
+        {
+          "text": "Progress Indicator",
+          "href": "/search/apps/ios?content_type=ui-elements&sort=trending&filter=screenElements.Progress+Indicator"
+        },
+        {
+          "text": "Card",
+          "href": "/search/apps/ios?content_type=ui-elements&sort=trending&filter=screenElements.Card"
+        },
+        {
+          "text": "Subscribing & Upgrading",
+          "href": "/search/apps/ios?content_type=flows&sort=trending&filter=flowActions.Subscribing+%26+Upgrading"
+        },
+        {
+          "text": "Onboarding",
+          "href": "/search/apps/ios?content_type=flows&sort=trending&filter=flowActions.Onboarding"
+        },
+        {
+          "text": "Browsing Tutorial",
+          "href": "/search/apps/ios?content_type=flows&sort=trending&filter=flowActions.Browsing+Tutorial"
+        },
+        {
+          "text": "Creating Account",
+          "href": "/search/apps/ios?content_type=flows&sort=trending&filter=flowActions.Creating+Account"
+        },
+        {
+          "text": "Chatting & Sending Messages",
+          "href": "/search/apps/ios?content_type=flows&sort=trending&filter=flowActions.Chatting+%26+Sending+Messages"
+        },
+        {
+          "text": "iOS",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Web",
+          "href": "/discover/apps/web/latest"
+        },
+        {
+          "text": "Latest",
+          "href": "/discover/apps/ios/latest"
+        }
+      ],
+      "imgSample": [
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/1f75b933-0978-4ced-89be-20770f166aa5.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Revolut logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/0a9efa4e-0ea8-4c61-8427-03e5bd7accfd.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Instagram logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/85e41e34-dcff-43a3-bf40-5ed2c83da1de.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Airbnb logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/c09eddb7-eae6-40de-99f8-5e738fae8411.png?f=png&w=400&q=85&fit=shrink-cove",
+          "alt": "Stripe Dashboard logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/258759b8-635c-4971-80b0-ec7bf22ebac7.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Cash App logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/d6a80823-6d30-4525-9d0b-e5d101dd79f8.jpg?f=png&w=400&q=85&fit=shrink-cove",
+          "alt": "Uber logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/c8bc85ff-d6d8-4af8-9afa-b5f6c734969d.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Wise logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/45faf0fb-adef-4939-8957-ca67763ef797.png?f=png&w=400&q=85&fit=shrink-cove",
+          "alt": "Dovetail logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/sites/f3ebb2f0-fe3c-4ef5-9e75-23c26d27784d.png?f=png&w=400&q=85&fit=shrink-cover",
+          "alt": "Sana logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/7876def4-d8aa-42dc-82f9-2267405dc54d.png?f=png&w=400&q=85&fit=shrink-cove",
+          "alt": "Employment Hero logo"
+        }
+      ],
+      "videoSample": [
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/video/mobbin.com/prod/content/app_flow_videos/82c7bd75-f813-494e-b4b7-3e5d0ec37bc2.mp4?f=mp4-h264&w=1920&hp=1920&sh=100&mute=true&p=mhq&q=73&gop=300&sd=false&rf=6&bf=7&qz=-1&if=0&bo=-1&a=%2Fvideo.mp4",
+          "poster": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_flow_videos/82c7bd75-f813-494e-b4b7-3e5d0ec37bc2.mp4?f=webp&w=1920&q=85&fit=shrink-cover&t=0",
+          "sources": [],
+          "dataAttrs": {}
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/video/mobbin.com/prod/content/app_flow_videos/b6eee83e-83f0-4495-9e1e-aaa28762dd9b.mp4?f=mp4-h264&w=1920&hp=1920&sh=100&mute=true&p=mhq&q=73&gop=300&sd=false&rf=6&bf=7&qz=-1&if=0&bo=-1&a=%2Fvideo.mp4",
+          "poster": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_flow_videos/b6eee83e-83f0-4495-9e1e-aaa28762dd9b.mp4?f=webp&w=1920&q=85&fit=shrink-cover&t=0",
+          "sources": [],
+          "dataAttrs": {}
+        }
+      ],
+      "appLinks": [
+        {
+          "text": "Mobbin",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Travel & Transportation",
+          "href": "/search/apps/ios?content_type=apps&sort=publishedAt&filter=appCategories.Travel+%26+Transportation"
+        },
+        {
+          "text": "Health & Fitness",
+          "href": "/search/apps/ios?content_type=apps&sort=publishedAt&filter=appCategories.Health+%26+Fitness"
+        },
+        {
+          "text": "Education",
+          "href": "/search/apps/ios?content_type=apps&sort=publishedAt&filter=appCategories.Education"
+        },
+        {
+          "text": "Finance",
+          "href": "/search/apps/ios?content_type=apps&sort=publishedAt&filter=appCategories.Finance"
+        },
+        {
+          "text": "Shopping",
+          "href": "/search/apps/ios?content_type=apps&sort=publishedAt&filter=appCategories.Shopping"
+        },
+        {
+          "text": "Dashboard",
+          "href": "/search/apps/ios?content_type=screens&sort=trending&filter=screenPatterns.Dashboard"
+        },
+        {
+          "text": "Welcome & Get Started",
+          "href": "/search/apps/ios?content_type=screens&sort=trending&filter=screenPatterns.Welcome+%26+Get+Started"
+        },
+        {
+          "text": "Home",
+          "href": "/search/apps/ios?content_type=screens&sort=trending&filter=screenPatterns.Home"
+        },
+        {
+          "text": "Subscription & Paywall",
+          "href": "/search/apps/ios?content_type=screens&sort=trending&filter=screenPatterns.Subscription+%26+Paywall"
+        },
+        {
+          "text": "Login",
+          "href": "/search/apps/ios?content_type=screens&sort=trending&filter=screenPatterns.Login"
+        },
+        {
+          "text": "Bottom Sheet",
+          "href": "/search/apps/ios?content_type=ui-elements&sort=trending&filter=screenElements.Bottom+Sheet"
+        },
+        {
+          "text": "Dropdown Menu",
+          "href": "/search/apps/ios?content_type=ui-elements&sort=trending&filter=screenElements.Dropdown+Menu"
+        }
+      ]
+    },
+    "apps_web": {
+      "status": 404,
+      "tried": "https://mobbin.com/apps/web",
+      "url": "https://mobbin.com/apps/web",
+      "title": "",
+      "h1": "Page not found",
+      "anchorSample": [
+        {
+          "text": "Mobbin",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Sites",
+          "href": "/discover/sites/latest"
+        },
+        {
+          "text": "",
+          "href": "/saved/mobile/screens"
+        },
+        {
+          "text": "",
+          "href": "/community/mobile/featured"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Sites",
+          "href": "/discover/sites/latest"
+        },
+        {
+          "text": "discover page",
+          "href": "/"
+        },
+        {
+          "text": "404 section references",
+          "href": "/search/sites?content_type=sections&filter=pageAndSectionPatterns.404"
+        },
+        {
+          "text": "Explore",
+          "href": "/explore"
+        },
+        {
+          "text": "Glossary",
+          "href": "/glossary"
+        },
+        {
+          "text": "Pricing",
+          "href": "/pricing"
+        },
+        {
+          "text": "Changelog",
+          "href": "/changelog"
+        },
+        {
+          "text": "Blog",
+          "href": "/blog"
+        },
+        {
+          "text": "Colors",
+          "href": "/colors"
+        },
+        {
+          "text": "Contact",
+          "href": "mailto:support@mobbin.com"
+        },
+        {
+          "text": "Help center",
+          "href": "https://help.mobbin.com"
+        },
+        {
+          "text": "Careers",
+          "href": "https://careers.mobbin.com"
+        },
+        {
+          "text": "Merch",
+          "href": "https://merch.mobbin.com"
+        },
+        {
+          "text": "X (Twitter)",
+          "href": "https://x.com/mobbin"
+        },
+        {
+          "text": "LinkedIn",
+          "href": "https://linkedin.com/company/mobbin"
+        },
+        {
+          "text": "Privacy Policy",
+          "href": "/privacy"
+        },
+        {
+          "text": "Terms",
+          "href": "/terms"
+        },
+        {
+          "text": "Privacy policy",
+          "href": "/privacy"
+        },
+        {
+          "text": "Terms",
+          "href": "/terms"
+        }
+      ],
+      "imgSample": [
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/7d0f5316-c217-44aa-886e-b656f5312e6c.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Duolingo logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/e342b093-798b-4dd6-9473-bf9d0145b8c0.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Monzo logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/b91ff3b1-047e-477c-8c4f-96b7b4126f0f.png?f=png&w=400&q=85&fit=shrink-cove",
+          "alt": "Coinbase logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/0a9efa4e-0ea8-4c61-8427-03e5bd7accfd.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Instagram logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/850a6cab-1392-439a-b910-bcdc874a5926.png?f=png&w=400&q=85&fit=shrink-cove",
+          "alt": "Strava logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/d95c2726-038c-4c81-a6b2-59dbe1b69e35.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Cal AI logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/258759b8-635c-4971-80b0-ec7bf22ebac7.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Cash App logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/sites/28ae04f8-6395-484d-8884-faac460254f6.png?f=png&w=400&q=85&fit=shrink-cover",
+          "alt": "Wispr Flow logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/sites/f3ebb2f0-fe3c-4ef5-9e75-23c26d27784d.png?f=png&w=400&q=85&fit=shrink-cover",
+          "alt": "Sana logo"
+        },
+        {
+          "src": "https://bytescale.mobbin.com/FW25bBB/image/mobbin.com/prod/content/app_logos/bd64c1ee-399d-4c12-a461-ad7f3f9232a9.webp?f=png&w=400&q=85&fit=shrink-cov",
+          "alt": "Claude logo"
+        }
+      ],
+      "videoSample": [],
+      "appLinks": [
+        {
+          "text": "Mobbin",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        },
+        {
+          "text": "Apps",
+          "href": "/discover/apps/ios/latest"
+        }
+      ]
+    }
+  }
+}
