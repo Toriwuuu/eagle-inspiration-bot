@@ -1502,8 +1502,12 @@ async function fetchRecentItems(days) {
       };
     })
     .filter((x) => x.ms >= cutoffMs)
-    .sort((a, b) => b.ms - a.ms)
-    .slice(0, 60);
+    .sort((a, b) => {
+      if (b.ms !== a.ms) return b.ms - a.ms;
+      // 同日資料 → interleave 各來源（讓每個 source 都有機會被看到）
+      return (a.id || '').localeCompare(b.id || '');
+    })
+    .slice(0, 200);
   return parsed;
 }
 
