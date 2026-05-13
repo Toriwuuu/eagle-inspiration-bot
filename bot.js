@@ -559,17 +559,65 @@ async function fetchMobbinFlows(context, listUrl, maxApps, screensPerApp, label)
   }
 }
 
+// 抓 app 細節頁的 animation 影片（每個 screen 的 micro-interaction）
+// detailUrl 通常是 .../<app-uuid>/<flow-uuid>/screens；mobbin 會 render 該 flow 內每個 screen 的 animation
+async function fetchAppAnimations(context, detailUrl, max, excludeStableIds = new Set()) {
+  if (!detailUrl || max <= 0) return [];
+  const page = await context.newPage();
+  try {
+    await page.goto(detailUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
+    await page.waitForSelector('video[src*="bytescale"]', { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+    // 滾兩下載入更多 screen
+    for (let i = 0; i < 2; i++) {
+      await page.evaluate(() => window.scrollBy(0, 1500));
+      await page.waitForTimeout(700);
+    }
+    return await page.evaluate(
+      ({ max, excluded }) => {
+        const videos = Array.from(
+          document.querySelectorAll('video[src*="bytescale"]')
+        ).filter((v) => /animations\/[0-9a-f-]{36}/i.test(v.src || ''));
+        const seen = new Set(excluded);
+        const out = [];
+        for (const v of videos) {
+          const src = v.src;
+          const m = src.match(/animations\/([0-9a-f-]{36})/i);
+          if (!m) continue;
+          if (seen.has(m[1])) continue;
+          seen.add(m[1]);
+          const anchor =
+            v.closest('a[href^="/screens/"]') ||
+            v.parentElement?.querySelector('a[href^="/screens/"]');
+          out.push({
+            src,
+            stableId: m[1],
+            screenHref: anchor?.getAttribute('href') || null,
+            kind: 'animation',
+          });
+          if (out.length >= max) break;
+        }
+        return out;
+      },
+      { max, excluded: [...excludeStableIds] }
+    );
+  } finally {
+    await page.close();
+  }
+}
+
 function isMobbinBlocked(flow, blocklist) {
   const apps = (blocklist?.mobbinApps || []).filter(Boolean);
   if (flow.appName && apps.includes(flow.appName)) return `app:${flow.appName}`;
   return null;
 }
 
-// 處理單一 flow → 寫進 Eagle（共用 latest / category / retry 邏輯）
+// 處理單一 flow / animation → 寫進 Eagle（共用 latest / category / retry 邏輯）
 async function ingestMobbinFlow(flow, ctx) {
   const { folderId, baseTags, source, existingStableIds, stats, newlyFailedRef } = ctx;
+  const kindLabel = flow.kind === 'animation' ? '🎬' : '📱';
   const displayName = `${flow.appName || 'Unknown'} - ${flow.stableId.slice(0, 8)}`;
-  log(`  [${source}] ${displayName}`);
+  log(`  [${source}] ${kindLabel} ${displayName}`);
 
   // 黑名單
   const blockedBy = isMobbinBlocked(flow, CONFIG.blocklist);
@@ -739,12 +787,29 @@ async function runMobbinFlow(globalStats) {
 
     for (const feed of feeds) {
       if (feed.type === 'latest') {
-        log(`\n--- Mobbin Latest (${feed.maxApps} apps × ${feed.screensPerApp} screens) ---`);
+        log(`\n--- Mobbin Latest (${feed.maxApps} apps × ${feed.screensPerApp} 筆/app) ---`);
         const url = `${MOBBIN_BASE}/discover/apps/${cfg.platform}/latest`;
-        const flows = await fetchMobbinFlows(context, url, feed.maxApps, feed.screensPerApp, 'latest');
-        log(`找到 ${flows.length} 個 flow`);
+        // 從 latest feed 抓每個 app 1 個 flow video（封面）
+        const flows = await fetchMobbinFlows(context, url, feed.maxApps, 1, 'latest');
+        log(`找到 ${flows.length} 個 flow video`);
         for (const flow of flows) {
-          await ingestMobbinFlow(flow, { ...ctx, source: 'latest' });
+          await ingestMobbinFlow({ ...flow, kind: 'flow_video' }, { ...ctx, source: 'latest' });
+          // 同一 app 從細節頁額外抓 animations 補滿 screensPerApp
+          const extraNeeded = (feed.screensPerApp || 1) - 1;
+          if (extraNeeded > 0 && flow.detailUrl) {
+            const animations = await fetchAppAnimations(
+              context,
+              flow.detailUrl,
+              extraNeeded,
+              existingStableIds
+            );
+            for (const ani of animations) {
+              await ingestMobbinFlow(
+                { ...ani, appName: flow.appName, detailUrl: flow.detailUrl },
+                { ...ctx, source: 'latest' }
+              );
+            }
+          }
         }
       } else if (feed.type === 'category') {
         const pickedCats = pickCategoriesForWeek(feed.categories, feed.categoriesPerRun || 1)
@@ -767,12 +832,26 @@ async function runMobbinFlow(globalStats) {
           );
           log(`  ${category}: 找到 ${flows.length} 個 flow`);
           const tag = `category:${category}`;
+          const extraNeeded = (feed.screensPerApp || 1) - 1;
           for (const flow of flows) {
-            await ingestMobbinFlow(flow, {
-              ...ctx,
-              source: tag,
-              baseTags: [...cfg.extraTags, `category:${category}`],
-            });
+            await ingestMobbinFlow(
+              { ...flow, kind: 'flow_video' },
+              { ...ctx, source: tag, baseTags: [...cfg.extraTags, `category:${category}`] }
+            );
+            if (extraNeeded > 0 && flow.detailUrl) {
+              const animations = await fetchAppAnimations(
+                context,
+                flow.detailUrl,
+                extraNeeded,
+                existingStableIds
+              );
+              for (const ani of animations) {
+                await ingestMobbinFlow(
+                  { ...ani, appName: flow.appName, detailUrl: flow.detailUrl },
+                  { ...ctx, source: tag, baseTags: [...cfg.extraTags, `category:${category}`] }
+                );
+              }
+            }
           }
         }
       }
@@ -792,6 +871,516 @@ async function runMobbinFlow(globalStats) {
 }
 
 // =====================================================================
+//                          Godly.website 流程
+// =====================================================================
+
+const GODLY_BASE = 'https://godly.website';
+
+async function fetchGodlyListing(context, max) {
+  const page = await context.newPage();
+  await page.goto(GODLY_BASE + '/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.waitForTimeout(2000);
+  // 滾動載入更多卡片
+  for (let i = 0; i < Math.ceil(max / 6); i++) {
+    await page.evaluate(() => window.scrollBy(0, 1500));
+    await page.waitForTimeout(700);
+  }
+  const hrefs = await page.$$eval('a[href^="/website/"]', (els) =>
+    els.map((a) => a.getAttribute('href'))
+  );
+  await page.close();
+  return [...new Set(hrefs)].slice(0, max).map((h) => GODLY_BASE + h);
+}
+
+async function fetchGodlyDetail(context, detailUrl) {
+  const page = await context.newPage();
+  try {
+    await page.goto(detailUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(1500);
+    const data = await page.evaluate(() => {
+      const title =
+        document.querySelector('h1')?.textContent?.trim() ||
+        document.title.replace(/\s*[-|]\s*Godly.*$/i, '').trim();
+      const video = document.querySelector('video');
+      const videoSrc =
+        video?.src ||
+        video?.currentSrc ||
+        video?.querySelector('source')?.getAttribute('src') ||
+        null;
+      const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute('content');
+
+      // 找 Visit 連結（去掉 ?ref=godly query）
+      let liveUrl = null;
+      const anchors = Array.from(document.querySelectorAll('a[href^="http"]')).filter(
+        (a) => !a.href.includes('godly.website')
+      );
+      const visitAnchor =
+        anchors.find((a) => /^visit\s*$/i.test(a.textContent.trim())) || anchors[0];
+      if (visitAnchor) {
+        liveUrl = visitAnchor.getAttribute('href')?.replace(/[?&]ref=godly\b/i, '') || null;
+        liveUrl = liveUrl?.replace(/[?&]$/, '');
+      }
+      return {
+        title,
+        mediaUrl: videoSrc || ogImage,
+        mediaType: videoSrc ? 'video' : 'image',
+        liveUrl,
+      };
+    });
+    return { ...data, detailUrl };
+  } finally {
+    await page.close();
+  }
+}
+
+async function runGodlyFlow(globalStats) {
+  const cfg = CONFIG.godly;
+  if (!cfg?.enabled) {
+    log('Godly 流程：已停用，跳過');
+    return;
+  }
+  log('\n========== Godly 流程 ==========');
+  const folderId = await ensureFolder(cfg.eagleFolderName);
+  const { browser, context } = await openHeadlessBrowser();
+  const stats = { added: 0, skipped: 0, failed: 0, blocked: 0, videoCount: 0, imageCount: 0 };
+  try {
+    log(`從 ${GODLY_BASE}/ 抓列表…`);
+    const urls = await fetchGodlyListing(context, cfg.maxSites);
+    log(`找到 ${urls.length} 個細節頁`);
+    for (const [i, url] of urls.entries()) {
+      log(`\n[godly ${i + 1}/${urls.length}] ${url}`);
+      try {
+        const detail = await fetchGodlyDetail(context, url);
+        log(`  作品：${detail.title}`);
+        log(`  網站：${detail.liveUrl || '(無)'}`);
+        log(`  媒體：${detail.mediaType}`);
+
+        const blockedBy = isAwwwardsBlocked(detail, CONFIG.blocklist);
+        if (blockedBy) {
+          log(`  🚫 黑名單命中（"${blockedBy}"）`);
+          stats.blocked++;
+          continue;
+        }
+        if (cfg.skipIfLiveUrlExists && detail.liveUrl) {
+          const exist = await callEagle('item_get', { url: detail.liveUrl, limit: 1 });
+          const list = exist?.data || exist?.result || exist;
+          if (Array.isArray(list) && list.length > 0) {
+            log('  ⏭ 已存在');
+            stats.skipped++;
+            continue;
+          }
+        }
+        if (!detail.mediaUrl) {
+          log('  ⚠ 沒可用媒體');
+          stats.failed++;
+          continue;
+        }
+        await callEagle('item_add', {
+          folders: [folderId],
+          tags: cfg.extraTags,
+          annotation: [
+            `作品：${detail.title}`,
+            `來源：Godly.website`,
+            `Live: ${detail.liveUrl || '-'}`,
+            `Godly: ${detail.detailUrl}`,
+            `抓取時間：${new Date().toISOString().slice(0, 10)}`,
+          ].join('\n'),
+          items: [
+            {
+              source: {
+                type: 'url',
+                url: detail.mediaUrl,
+                website: detail.liveUrl || detail.detailUrl,
+              },
+              name: detail.title,
+            },
+          ],
+        });
+        log('  ✓ 已加入 Eagle');
+        stats.added++;
+        if (detail.mediaType === 'video') stats.videoCount++;
+        else stats.imageCount++;
+      } catch (e) {
+        log('  ❌ 失敗：', e.message);
+        stats.failed++;
+      }
+    }
+  } finally {
+    await browser.close();
+  }
+  log(
+    `\nGodly 結果：新增 ${stats.added}（影片 ${stats.videoCount}、圖片 ${stats.imageCount}）／跳過 ${stats.skipped}／黑名單 ${stats.blocked}／失敗 ${stats.failed}`
+  );
+  globalStats.godly = stats;
+}
+
+// =====================================================================
+//                  Mobbin 主題手動搜尋（--search）
+// =====================================================================
+
+// 常見搜尋詞 → mobbin 官方 pattern 名稱對應
+const MOBBIN_PATTERN_ALIAS = {
+  onboarding: 'Welcome & Get Started',
+  welcome: 'Welcome & Get Started',
+  signup: 'Signup',
+  signin: 'Login',
+  login: 'Login',
+  paywall: 'Subscription & Paywall',
+  subscription: 'Subscription & Paywall',
+  payment: 'Payment Method',
+  checkout: 'Checkout',
+  profile: 'My Account & Profile',
+  settings: 'Settings',
+  search: 'Search',
+  notification: 'Notifications',
+};
+
+async function runMobbinSearch(rawQuery, count) {
+  if (!rawQuery) {
+    log('用法：node bot.js --search <pattern或關鍵字> [count]');
+    log('例：node bot.js --search onboarding 10');
+    log(`支援的別名：${Object.keys(MOBBIN_PATTERN_ALIAS).join(', ')}`);
+    return;
+  }
+
+  const pattern = MOBBIN_PATTERN_ALIAS[rawQuery.toLowerCase()] || rawQuery;
+  const cfg = CONFIG.mobbin;
+  log(`=== Mobbin 主題搜尋：${pattern}（${count} 筆）===`);
+
+  if (!fs.existsSync(MOBBIN_PROFILE_DIR)) {
+    log('⚠ Mobbin profile 不存在，請先跑：node bot.js --setup-mobbin');
+    return;
+  }
+
+  const folderId = await ensureFolder(cfg.eagleFolderName);
+  const context = await openMobbinBrowser(true);
+  const stats = { added: 0, skipped: 0, failed: 0, blocked: 0, appCount: new Set() };
+  const newlyFailed = [];
+
+  try {
+    const checkPage = await context.newPage();
+    await checkPage.goto(MOBBIN_BASE, { waitUntil: 'domcontentloaded' });
+    await checkPage.waitForTimeout(2000);
+    const loggedIn = await detectLogin(checkPage);
+    await checkPage.close();
+    if (!loggedIn) {
+      log('⚠ Mobbin session 失效，請手動跑：node bot.js --setup-mobbin');
+      return;
+    }
+
+    // 預載去重 set
+    const existingStableIds = new Set();
+    const existing = await callEagle('item_get', {
+      folders: [folderId], fullDetails: true, limit: 1000,
+    });
+    const existingList = existing?.data || existing?.result || existing;
+    if (Array.isArray(existingList)) {
+      for (const it of existingList) {
+        const m = (it.annotation || '').match(/stableId:\s*([0-9a-f-]{36})/i);
+        if (m) existingStableIds.add(m[1]);
+      }
+    }
+
+    const encoded = encodeURIComponent(pattern).replace(/%20/g, '+');
+    const url = `${MOBBIN_BASE}/search/apps/${cfg.platform}?content_type=screens&sort=trending&filter=screenPatterns.${encoded}`;
+    log(`訪問 ${url}`);
+
+    // 直接走 fetchAppAnimations 邏輯（search 結果頁也是 animations 形式）
+    const page = await context.newPage();
+    let animations = [];
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForSelector('video[src*="bytescale"]', { timeout: 10000 }).catch(() => {});
+      await page.waitForTimeout(2000);
+      // 滾動載入更多
+      const scrollTimes = Math.ceil(count / 5);
+      for (let i = 0; i < scrollTimes; i++) {
+        await page.evaluate(() => window.scrollBy(0, 1500));
+        await page.waitForTimeout(800);
+      }
+      animations = await page.evaluate(
+        ({ max, excluded }) => {
+          const seen = new Set(excluded);
+          const videos = Array.from(document.querySelectorAll('video[src*="bytescale"]')).filter((v) =>
+            /animations\/[0-9a-f-]{36}/i.test(v.src || '')
+          );
+          const out = [];
+          for (const v of videos) {
+            const m = v.src.match(/animations\/([0-9a-f-]{36})/i);
+            if (!m || seen.has(m[1])) continue;
+            seen.add(m[1]);
+            // 找 app logo（向上找 app 卡片）
+            const card = v.closest('a[href^="/screens/"]')?.closest('li') || v.closest('li');
+            const logoImg = card?.querySelector('img[alt$=" logo" i]');
+            const appName = (logoImg?.alt || '').replace(/ logo$/i, '').trim() || null;
+            out.push({
+              src: v.src,
+              stableId: m[1],
+              kind: 'animation',
+              appName,
+            });
+            if (out.length >= max) break;
+          }
+          return out;
+        },
+        { max: count, excluded: [...existingStableIds] }
+      );
+    } finally {
+      await page.close();
+    }
+
+    log(`找到 ${animations.length} 個 animation`);
+
+    const ctx = {
+      folderId,
+      baseTags: [...cfg.extraTags, 'manual', `pattern:${pattern}`],
+      source: `search:${pattern}`,
+      existingStableIds,
+      stats,
+      newlyFailedRef: newlyFailed,
+    };
+    for (const ani of animations) {
+      await ingestMobbinFlow({ ...ani, detailUrl: url }, ctx);
+    }
+  } finally {
+    await context.close();
+    // 把本次失敗 merge 進 existing failed-urls.json（不要覆蓋既有 retry queue）
+    if (newlyFailed.length) {
+      const existing = loadFailedUrls();
+      saveFailedUrls([...existing, ...newlyFailed]);
+    }
+  }
+
+  const body = `主題「${pattern}」新增 ${stats.added}／跳過 ${stats.skipped}／黑名單 ${stats.blocked}／失敗 ${stats.failed}`;
+  log(`\n${body}`);
+  notify('Eagle Inspiration Bot', body);
+}
+
+// =====================================================================
+//                          月報生成（--report）
+// =====================================================================
+
+// 主程式每次跑完會 check 上個月月報是否已存在；不在就自動生成
+async function maybeAutoGenerateLastMonthReport() {
+  const now = new Date();
+  const last = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const ym = `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}`;
+  const reportPath = path.join(LOGS_DIR, `monthly-${ym}.md`);
+  if (fs.existsSync(reportPath)) return;
+  log(`\n自動生成上月報告：${ym}`);
+  await generateMonthlyReport(ym);
+}
+
+async function generateMonthlyReport(yearMonth) {
+  if (!yearMonth) {
+    const now = new Date();
+    const last = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    yearMonth = `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}`;
+  }
+  log(`\n========== 月報生成 ${yearMonth} ==========`);
+  const [year, month] = yearMonth.split('-').map(Number);
+  const monthStart = new Date(year, month - 1, 1).getTime();
+  const monthEnd = new Date(year, month, 1).getTime();
+
+  const folderNames = [
+    CONFIG.awwwards?.eagleFolderName,
+    CONFIG.mobbin?.eagleFolderName,
+    CONFIG.godly?.eagleFolderName,
+  ].filter(Boolean);
+
+  const tree = await callEagle('folder_get', { getAllHierarchy: true });
+  const tList = tree?.data || tree?.result || tree;
+  const folderIds = [];
+  for (const name of folderNames) {
+    const f = findFolderByName(tList, name);
+    if (f) folderIds.push(f.id);
+  }
+  if (!folderIds.length) {
+    log('找不到任何來源資料夾');
+    return;
+  }
+
+  const allItems = [];
+  for (const fid of folderIds) {
+    const r = await callEagle('item_get', { folders: [fid], fullDetails: true, limit: 1000 });
+    const items = r?.data || [];
+    allItems.push(...items);
+  }
+
+  // Eagle 預設不回時間欄位，從 annotation 內的「抓取時間：YYYY-MM-DD」parse
+  // 我們 bot 自己寫入的 annotation 一定有這欄位
+  const getItemDate = (it) => {
+    const m = (it.annotation || '').match(/抓取時間：(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : null;
+  };
+  const monthPrefix = yearMonth; // "2026-05"
+
+  const filtered = allItems.filter((it) => {
+    const d = getItemDate(it);
+    return d && d.startsWith(monthPrefix);
+  });
+
+  const stats = {
+    total: filtered.length,
+    bySource: { awwwards: 0, mobbin: 0, godly: 0, other: 0 },
+    byKind: { video: 0, image: 0 },
+    awwwardsBreakdown: {},
+    mobbinApps: {},
+    mobbinCategories: {},
+    samples: [],
+  };
+
+  for (const it of filtered) {
+    const tags = it.tags || [];
+    const ext = (it.ext || '').toLowerCase();
+    if (/^(mp4|webm|mov|m4v)$/i.test(ext)) stats.byKind.video++;
+    else stats.byKind.image++;
+
+    if (tags.includes('awwwards')) {
+      stats.bySource.awwwards++;
+      for (const t of tags) {
+        if (['sotd', 'nominees'].includes(t)) {
+          stats.awwwardsBreakdown[t] = (stats.awwwardsBreakdown[t] || 0) + 1;
+        }
+      }
+    } else if (tags.includes('mobbin')) {
+      stats.bySource.mobbin++;
+      for (const t of tags) {
+        if (t.startsWith('category:')) {
+          const cat = t.slice('category:'.length);
+          stats.mobbinCategories[cat] = (stats.mobbinCategories[cat] || 0) + 1;
+        }
+      }
+      const m = (it.annotation || '').match(/^App:\s*(.+?)$/m);
+      if (m && m[1] !== '(unknown)') {
+        stats.mobbinApps[m[1]] = (stats.mobbinApps[m[1]] || 0) + 1;
+      }
+    } else if (tags.includes('godly')) {
+      stats.bySource.godly++;
+    } else {
+      stats.bySource.other++;
+    }
+
+    if (stats.samples.length < 8) {
+      stats.samples.push({ name: it.name, ext, tags: tags.slice(0, 4) });
+    }
+  }
+
+  const pct = (n) => (stats.total ? Math.round((100 * n) / stats.total) : 0);
+  const topApps = Object.entries(stats.mobbinApps).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const topCats = Object.entries(stats.mobbinCategories).sort((a, b) => b[1] - a[1]);
+
+  const md = `# 靈感蒐集月報 ${yearMonth}
+
+> 生成於 ${new Date().toISOString().slice(0, 10)} · 由 Eagle Inspiration Bot 自動產生
+
+## 總覽
+
+- 本月新增 **${stats.total}** 筆靈感
+- 影片 ${stats.byKind.video} · 圖片 ${stats.byKind.image}
+
+## 來源比例
+
+| 來源 | 筆數 | 比例 |
+|---|---:|---:|
+| Awwwards | ${stats.bySource.awwwards} | ${pct(stats.bySource.awwwards)}% |
+| Mobbin | ${stats.bySource.mobbin} | ${pct(stats.bySource.mobbin)}% |
+| Godly | ${stats.bySource.godly} | ${pct(stats.bySource.godly)}% |
+${stats.bySource.other ? `| 其他 | ${stats.bySource.other} | ${pct(stats.bySource.other)}% |\n` : ''}
+
+## Awwwards 細分
+
+- SOTD: ${stats.awwwardsBreakdown.sotd || 0}
+- Nominees: ${stats.awwwardsBreakdown.nominees || 0}
+
+## Mobbin Top Apps
+
+${topApps.length ? topApps.map(([app, n]) => `- **${app}** × ${n}`).join('\n') : '*（本月無 Mobbin 內容）*'}
+
+## Mobbin 分類分布
+
+${topCats.length ? topCats.map(([cat, n]) => `- ${cat} × ${n}`).join('\n') : '*（本月無分類內容）*'}
+
+## 樣本（前 ${stats.samples.length} 筆）
+
+${stats.samples.map((s) => `- ${s.name} · .${s.ext} · [${s.tags.join(', ')}]`).join('\n')}
+
+---
+
+*配置：${folderNames.join(' / ')}*
+`;
+
+  const reportPath = path.join(LOGS_DIR, `monthly-${yearMonth}.md`);
+  fs.writeFileSync(reportPath, md);
+  log(`✓ 月報已寫到 ${reportPath}`);
+  log(`  總計 ${stats.total} 筆（Awwwards ${stats.bySource.awwwards} / Mobbin ${stats.bySource.mobbin} / Godly ${stats.bySource.godly}）`);
+}
+
+// =====================================================================
+//                      Web Dashboard（--config-ui）
+// =====================================================================
+
+async function startConfigUI() {
+  const http = require('http');
+  const PORT = 3030;
+  const HTML_PATH = path.join(ROOT, 'dashboard.html');
+
+  const server = http.createServer(async (req, res) => {
+    const sendJSON = (obj, status = 200) => {
+      res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(obj));
+    };
+    try {
+      if (req.method === 'GET' && req.url === '/') {
+        const html = fs.readFileSync(HTML_PATH, 'utf8');
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(html);
+      } else if (req.method === 'GET' && req.url === '/api/config') {
+        sendJSON(JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8')));
+      } else if (req.method === 'POST' && req.url === '/api/config') {
+        const chunks = [];
+        for await (const c of req) chunks.push(c);
+        const body = Buffer.concat(chunks).toString('utf8');
+        const parsed = JSON.parse(body);
+        // 寫入前驗證一下基本結構
+        if (typeof parsed !== 'object' || !parsed.awwwards || !parsed.mobbin) {
+          sendJSON({ ok: false, error: '結構不完整：缺 awwwards / mobbin section' }, 400);
+          return;
+        }
+        fs.writeFileSync(path.join(ROOT, 'config.json'), JSON.stringify(parsed, null, 2) + '\n');
+        sendJSON({ ok: true });
+      } else if (req.method === 'GET' && req.url === '/api/status') {
+        // 簡單 status：mobbin profile 是否存在、failed-urls 數量
+        const status = {
+          mobbinSetup: fs.existsSync(MOBBIN_PROFILE_DIR),
+          failedCount: loadFailedUrls().length,
+          isoWeek: getIsoWeek(),
+        };
+        sendJSON(status);
+      } else {
+        res.writeHead(404);
+        res.end('Not Found');
+      }
+    } catch (e) {
+      sendJSON({ ok: false, error: e.message }, 500);
+    }
+  });
+
+  server.listen(PORT, '127.0.0.1', () => {
+    const url = `http://127.0.0.1:${PORT}`;
+    log(`✓ Dashboard 已啟動：${url}`);
+    log('按 Ctrl-C 結束');
+    try {
+      spawn('open', [url]);
+    } catch {
+      /* ignore */
+    }
+  });
+
+  await new Promise(() => {}); // 永遠不返回
+}
+
+// =====================================================================
 //                          主流程
 // =====================================================================
 
@@ -807,6 +1396,29 @@ async function main() {
   }
   if (args.includes('--probe-mobbin')) {
     await probeMobbinStructure();
+    return;
+  }
+
+  // --search <query> [count]
+  const searchIdx = args.indexOf('--search');
+  if (searchIdx >= 0) {
+    const query = args[searchIdx + 1];
+    const count = parseInt(args[searchIdx + 2] || '10', 10);
+    await runMobbinSearch(query, count);
+    return;
+  }
+
+  // --report [YYYY-MM]
+  if (args.includes('--report')) {
+    const idx = args.indexOf('--report');
+    const month = args[idx + 1] && /^\d{4}-\d{2}$/.test(args[idx + 1]) ? args[idx + 1] : null;
+    await generateMonthlyReport(month);
+    return;
+  }
+
+  // --config-ui
+  if (args.includes('--config-ui')) {
+    await startConfigUI();
     return;
   }
 
@@ -832,12 +1444,25 @@ async function main() {
     log('❌ Mobbin 流程錯誤：', e.message);
   }
 
+  try {
+    await runGodlyFlow(globalStats);
+  } catch (e) {
+    log('❌ Godly 流程錯誤：', e.message);
+  }
+
+  // 跑完順便補上個月的月報（若尚未存在）
+  try {
+    await maybeAutoGenerateLastMonthReport();
+  } catch (e) {
+    log('⚠ 月報自動生成失敗：', e.message);
+  }
+
   // 桌面通知
   const aw = globalStats.awwwards || { added: 0 };
   const mb = globalStats.mobbin || { added: 0 };
-  const total = aw.added + mb.added;
-  const body =
-    `本週新增 ${total} 筆 · Awwwards ${aw.added}（含黑名單 ${aw.blocked || 0} / 跳過 ${aw.skipped || 0}） · Mobbin ${mb.added}（${mb.appCount?.size || 0} 個 app）`;
+  const gd = globalStats.godly || { added: 0 };
+  const total = aw.added + mb.added + gd.added;
+  const body = `本週新增 ${total} 筆 · Awwwards ${aw.added} · Mobbin ${mb.added}（${mb.appCount?.size || 0} app） · Godly ${gd.added}`;
   notify('Eagle Inspiration Bot', body);
   log('\n=== 結束 ===');
   log(body);

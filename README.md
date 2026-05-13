@@ -1,23 +1,29 @@
 # Eagle 靈感庫自動更新機器人
 
-每週自動從 [Awwwards](https://www.awwwards.com) + [Mobbin](https://mobbin.com) 抓取設計靈感，存進你的 Eagle 收藏夾，並標好分類 tag。
+每週自動從多個來源抓取設計靈感，存進你的 Eagle 收藏夾。內建 Web dashboard 讓你視覺化編輯設定、月報自動產生。
 
 ## 它做什麼
 
-**Awwwards SOTD**：
-- 用無頭瀏覽器（Playwright）開 Awwwards 列表頁
-- 對每個作品抓多個 element 預覽 `.mp4`（就是你用 Chrome Eagle 插件拖拉的同一個檔案）
-- 若該作品沒有影片，自動退回抓 hero JPG
-- 自動去重：已存在的作品（依 live URL 比對）會跳過
+**Awwwards**（無頭瀏覽器抓 .mp4 預覽影片）：
+- SOTD（Site of the Day）：每天 1 個精選
+- Nominees：每天 ~20 個提名作品，週中跑也常有新東西
 
-**Mobbin Latest**：
-- 用持久化登入的瀏覽器（你的 Mobbin session 存本機）開 `/discover/apps/ios/latest`
-- 抓 N 個最新加入的 app，每個 app 的預覽 flow 影片
-- 自動去重（依 flow stableId）
+**Mobbin**（持久化登入瀏覽器，跟 Chrome Eagle 插件拖拉行為一致）：
+- Latest feed：每個 app 抓 1 個 flow 預覽 + 進細節頁額外抓 N-1 個 micro-animation
+- 分類輪換：每週用 ISO 週數 modulo 自動換 2 個分類（Health & Fitness / Travel / Lifestyle…）
+- 自動去重（依 video stableId UUID）
 
-**共通**：
-- 透過 Eagle 本機 API 寫入指定資料夾、附 tag、註記
-- 透過 macOS launchd 每週自動執行
+**Godly.website**：策展型 web design gallery，hero `.mp4` 直連、不需登入
+
+**功能**：
+- macOS 桌面通知：跑完跳「本週新增 X 筆」
+- 黑名單：keyword / app / category 自動 skip
+- 失敗 retry：HEAD fail 的 URL 下次跑開頭重試一次
+- 主題手動觸發：`node bot.js --search onboarding 10` 隨時抓特定主題
+- 月報生成：`node bot.js --report 2026-05` dump markdown 月度統計，每月跑時自動生成上月
+- Web dashboard：`node bot.js --config-ui` 開 localhost:3030 視覺化編輯 config
+
+**排程**：透過 macOS launchd 每週自動執行
 
 ---
 
@@ -171,6 +177,62 @@ chmod +x install-schedule.sh
 mp4 下載前的 HEAD 驗證若失敗，會記到 `~/.eagle-bot/failed-urls.json`，下次 bot 跑時開頭自動重試一次；再失敗就 drop（不會無限累積）。
 
 改完不需重啟，下次跑 `node bot.js` 或排程觸發時即生效。
+
+---
+
+## CLI 指令一覽
+
+```bash
+node bot.js                       # 跑全部來源（Awwwards + Mobbin + Godly）
+node bot.js --setup-mobbin        # 首次設定 Mobbin 登入
+node bot.js --probe-mobbin        # 重新勘查 mobbin 頁面結構
+node bot.js --search onboarding 10   # 按主題搜尋 mobbin，存 10 筆進 Eagle
+node bot.js --search "Subscription & Paywall" 5   # 直接傳 mobbin pattern 名稱
+node bot.js --report              # 生成上月月報
+node bot.js --report 2026-04      # 生成指定月份月報
+node bot.js --config-ui           # 啟動本機 dashboard（localhost:3030）
+```
+
+### 主題搜尋 alias
+
+`--search` 後可用以下別名（會自動對應到 mobbin 官方 pattern）：
+
+`onboarding` / `welcome` / `signup` / `login` / `signin` / `paywall` / `subscription` / `payment` / `checkout` / `profile` / `settings` / `search` / `notification`
+
+或直接傳 mobbin 官方 pattern 名稱（例 `"Empty State"`、`"Filters & Sorting"` 等）。
+
+---
+
+## Web Dashboard
+
+```bash
+node bot.js --config-ui
+```
+
+會自動開瀏覽器到 `http://localhost:3030`，可以：
+- 開關每個來源（Awwwards / Mobbin / Godly）
+- 調整 maxSites / maxApps 等所有參數
+- 編輯黑名單清單
+- 看當前 Mobbin session 狀態、失敗 URL 數量、ISO 週數
+
+設定改完按右下「儲存設定」會寫回 `config.json`，下次 bot 跑時即生效。按 Ctrl-C 結束 dashboard。
+
+---
+
+## 月報
+
+每次 bot 跑時若上個月的月報還沒生成過，會自動產出到 `logs/monthly-YYYY-MM.md`。也能手動跑：
+
+```bash
+node bot.js --report 2026-04
+```
+
+月報內容：
+- 本月總筆數、影片 vs 圖片比例
+- 來源比例（Awwwards / Mobbin / Godly）
+- Awwwards 細分（SOTD vs Nominees）
+- Mobbin Top 5 apps、分類分布
+- 樣本前 8 筆
 
 ---
 

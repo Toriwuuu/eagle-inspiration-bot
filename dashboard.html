@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Eagle Inspiration Bot — Config</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #181b22;
+    --panel-2: #1f232c;
+    --border: #2a2f3a;
+    --text: #e8eaf0;
+    --muted: #8b94a6;
+    --accent: #6c8eff;
+    --accent-hover: #8aa7ff;
+    --success: #4ade80;
+    --danger: #f87171;
+    --warning: #fbbf24;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.6 -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+    padding: 32px 20px 80px;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  header { margin-bottom: 32px; }
+  header h1 { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+  header p { color: var(--muted); font-size: 13px; }
+  .status {
+    display: flex; gap: 20px; margin-top: 14px;
+    padding: 12px 16px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; font-size: 13px;
+  }
+  .status .kv { color: var(--muted); }
+  .status .kv b { color: var(--text); font-weight: 500; margin-left: 4px; }
+  .status .ok { color: var(--success); }
+  .status .warn { color: var(--warning); }
+  .section {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 22px;
+    margin-bottom: 16px;
+  }
+  .section h2 {
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin-bottom: 16px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .row {
+    display: grid; grid-template-columns: 160px 1fr; gap: 16px;
+    padding: 10px 0; align-items: center;
+  }
+  .row + .row { border-top: 1px solid var(--border); }
+  .row label { color: var(--text); font-size: 13.5px; }
+  .row .hint { color: var(--muted); font-size: 11.5px; margin-top: 2px; display: block; }
+  input[type="text"], input[type="number"], textarea {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font: inherit;
+  }
+  input[type="text"]:focus, input[type="number"]:focus, textarea:focus {
+    outline: 1.5px solid var(--accent); border-color: var(--accent);
+  }
+  textarea { min-height: 60px; resize: vertical; font: 12.5px/1.5 SF Mono, Menlo, monospace; }
+  .switch {
+    position: relative; display: inline-block; width: 38px; height: 22px;
+  }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute; cursor: pointer; inset: 0;
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 22px; transition: 0.2s;
+  }
+  .slider:before {
+    content: ""; position: absolute; height: 16px; width: 16px;
+    left: 2px; top: 2px; background: var(--muted);
+    border-radius: 50%; transition: 0.2s;
+  }
+  .switch input:checked + .slider { background: rgba(108, 142, 255, 0.2); border-color: var(--accent); }
+  .switch input:checked + .slider:before { transform: translateX(16px); background: var(--accent); }
+  .feed, .source {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 16px; margin: 10px 0;
+  }
+  .feed h3, .source h3 {
+    font-size: 12.5px; font-weight: 500; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 10px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .footer {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--bg); border-top: 1px solid var(--border);
+    padding: 14px 20px; display: flex; gap: 12px; align-items: center; justify-content: center;
+  }
+  button {
+    background: var(--accent); color: white; border: 0;
+    padding: 9px 20px; border-radius: 6px; cursor: pointer;
+    font: 500 13px -apple-system, sans-serif; transition: 0.15s;
+  }
+  button:hover { background: var(--accent-hover); }
+  button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  button.ghost:hover { color: var(--text); border-color: var(--text); }
+  .toast {
+    position: fixed; top: 24px; right: 24px;
+    background: var(--panel); border: 1px solid var(--border);
+    padding: 12px 18px; border-radius: 8px;
+    opacity: 0; transform: translateY(-10px); transition: 0.2s;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.success { border-color: var(--success); }
+  .toast.danger { border-color: var(--danger); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Eagle Inspiration Bot</h1>
+    <p>本機 dashboard，編輯 config.json 後按右下角儲存即生效</p>
+    <div class="status" id="status">載入中…</div>
+  </header>
+
+  <form id="cfg">
+    <div class="section">
+      <h2>全域設定</h2>
+      <div class="row">
+        <label for="notifyOnFinish">桌面通知</label>
+        <label class="switch"><input type="checkbox" id="notifyOnFinish"><span class="slider"></span></label>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Awwwards <label class="switch"><input type="checkbox" id="aw_enabled"><span class="slider"></span></label></h2>
+      <div class="row">
+        <label for="aw_folder">Eagle 資料夾</label>
+        <input type="text" id="aw_folder">
+      </div>
+      <div class="row">
+        <label for="aw_tags">額外 tag</label>
+        <input type="text" id="aw_tags" placeholder="逗號分隔，例：awwwards,sotd">
+      </div>
+      <div class="row">
+        <label for="aw_eps">每作品 element 數</label>
+        <input type="number" id="aw_eps" min="1" max="20">
+      </div>
+      <div class="row">
+        <label>來源</label>
+        <div>
+          <div class="source">
+            <h3>SOTD <label class="switch"><input type="checkbox" id="aw_sotd_enabled"><span class="slider"></span></label></h3>
+            <div class="row" style="border:0">
+              <label for="aw_sotd_max">maxSites</label>
+              <input type="number" id="aw_sotd_max" min="1" max="30">
+            </div>
+          </div>
+          <div class="source">
+            <h3>Nominees <label class="switch"><input type="checkbox" id="aw_nom_enabled"><span class="slider"></span></label></h3>
+            <div class="row" style="border:0">
+              <label for="aw_nom_max">maxSites</label>
+              <input type="number" id="aw_nom_max" min="1" max="30">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Mobbin <label class="switch"><input type="checkbox" id="mb_enabled"><span class="slider"></span></label></h2>
+      <div class="row">
+        <label for="mb_folder">Eagle 資料夾</label>
+        <input type="text" id="mb_folder">
+      </div>
+      <div class="row">
+        <label for="mb_platform">platform</label>
+        <input type="text" id="mb_platform" placeholder="ios 或 web">
+      </div>
+      <div class="row">
+        <label for="mb_tags">額外 tag</label>
+        <input type="text" id="mb_tags">
+      </div>
+      <div class="row">
+        <label>Latest feed</label>
+        <div class="feed">
+          <h3>Latest <label class="switch"><input type="checkbox" id="mb_latest_enabled"><span class="slider"></span></label></h3>
+          <div class="row" style="border:0">
+            <label for="mb_latest_apps">maxApps</label>
+            <input type="number" id="mb_latest_apps" min="1" max="20">
+          </div>
+          <div class="row" style="border:0">
+            <label for="mb_latest_spa">每 app 筆數</label>
+            <input type="number" id="mb_latest_spa" min="1" max="10">
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <label>分類輪換</label>
+        <div class="feed">
+          <h3>Category <label class="switch"><input type="checkbox" id="mb_cat_enabled"><span class="slider"></span></label></h3>
+          <div class="row" style="border:0">
+            <label for="mb_cat_list">分類清單</label>
+            <div>
+              <textarea id="mb_cat_list" placeholder="一行一個"></textarea>
+              <span class="hint">本週會用 ISO 週數輪換挑出 N 個</span>
+            </div>
+          </div>
+          <div class="row" style="border:0">
+            <label for="mb_cat_perRun">每週幾個分類</label>
+            <input type="number" id="mb_cat_perRun" min="1" max="8">
+          </div>
+          <div class="row" style="border:0">
+            <label for="mb_cat_maxApps">每分類 maxApps</label>
+            <input type="number" id="mb_cat_maxApps" min="1" max="20">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Godly <label class="switch"><input type="checkbox" id="gd_enabled"><span class="slider"></span></label></h2>
+      <div class="row">
+        <label for="gd_folder">Eagle 資料夾</label>
+        <input type="text" id="gd_folder">
+      </div>
+      <div class="row">
+        <label for="gd_max">maxSites</label>
+        <input type="number" id="gd_max" min="1" max="30">
+      </div>
+      <div class="row">
+        <label for="gd_tags">額外 tag</label>
+        <input type="text" id="gd_tags">
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>黑名單</h2>
+      <div class="row">
+        <label for="bl_aw">Awwwards 關鍵字</label>
+        <div><textarea id="bl_aw" placeholder="一行一個關鍵字"></textarea><span class="hint">標題或 URL 含這些字 (不分大小寫) 就 skip</span></div>
+      </div>
+      <div class="row">
+        <label for="bl_mb_apps">Mobbin apps</label>
+        <textarea id="bl_mb_apps" placeholder="一行一個 app 名稱"></textarea>
+      </div>
+      <div class="row">
+        <label for="bl_mb_cats">Mobbin 分類</label>
+        <textarea id="bl_mb_cats" placeholder="一行一個分類名稱"></textarea>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="footer">
+  <button type="button" class="ghost" onclick="loadConfig()">重新載入</button>
+  <button type="button" onclick="saveConfig()">儲存設定</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const toast = (msg, type = 'success') => {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = `toast show ${type}`;
+  setTimeout(() => t.className = 'toast', 2000);
+};
+
+async function loadStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const s = await r.json();
+    $('status').innerHTML = `
+      <span class="kv">Mobbin Session<b class="${s.mobbinSetup ? 'ok' : 'warn'}">${s.mobbinSetup ? '已設定' : '未設定'}</b></span>
+      <span class="kv">失敗待重試<b>${s.failedCount}</b></span>
+      <span class="kv">ISO 週<b>${s.isoWeek}</b></span>
+    `;
+  } catch (e) {
+    $('status').textContent = '無法連線到 bot';
+  }
+}
+
+async function loadConfig() {
+  const cfg = await (await fetch('/api/config')).json();
+  $('notifyOnFinish').checked = cfg.notifyOnFinish !== false;
+
+  // Awwwards
+  $('aw_enabled').checked = !!cfg.awwwards?.enabled;
+  $('aw_folder').value = cfg.awwwards?.eagleFolderName || '';
+  $('aw_tags').value = (cfg.awwwards?.extraTags || []).join(', ');
+  $('aw_eps').value = cfg.awwwards?.elementsPerSite || 4;
+  const sotd = (cfg.awwwards?.sources || []).find((s) => s.type === 'sotd') || {};
+  const nom = (cfg.awwwards?.sources || []).find((s) => s.type === 'nominees') || {};
+  $('aw_sotd_enabled').checked = !!sotd.enabled;
+  $('aw_sotd_max').value = sotd.maxSites || 7;
+  $('aw_nom_enabled').checked = !!nom.enabled;
+  $('aw_nom_max').value = nom.maxSites || 10;
+
+  // Mobbin
+  $('mb_enabled').checked = !!cfg.mobbin?.enabled;
+  $('mb_folder').value = cfg.mobbin?.eagleFolderName || '';
+  $('mb_platform').value = cfg.mobbin?.platform || 'ios';
+  $('mb_tags').value = (cfg.mobbin?.extraTags || []).join(', ');
+  const latest = (cfg.mobbin?.feeds || []).find((f) => f.type === 'latest') || {};
+  const cat = (cfg.mobbin?.feeds || []).find((f) => f.type === 'category') || {};
+  $('mb_latest_enabled').checked = !!latest.enabled;
+  $('mb_latest_apps').value = latest.maxApps || 5;
+  $('mb_latest_spa').value = latest.screensPerApp || 3;
+  $('mb_cat_enabled').checked = !!cat.enabled;
+  $('mb_cat_list').value = (cat.categories || []).join('\n');
+  $('mb_cat_perRun').value = cat.categoriesPerRun || 2;
+  $('mb_cat_maxApps').value = cat.maxAppsPerCategory || 3;
+
+  // Godly
+  $('gd_enabled').checked = !!cfg.godly?.enabled;
+  $('gd_folder').value = cfg.godly?.eagleFolderName || '';
+  $('gd_max').value = cfg.godly?.maxSites || 5;
+  $('gd_tags').value = (cfg.godly?.extraTags || []).join(', ');
+
+  // Blocklist
+  $('bl_aw').value = (cfg.blocklist?.awwwardsKeywords || []).join('\n');
+  $('bl_mb_apps').value = (cfg.blocklist?.mobbinApps || []).join('\n');
+  $('bl_mb_cats').value = (cfg.blocklist?.mobbinCategories || []).join('\n');
+}
+
+function splitLines(s) {
+  return (s || '').split('\n').map((x) => x.trim()).filter(Boolean);
+}
+function splitCsv(s) {
+  return (s || '').split(',').map((x) => x.trim()).filter(Boolean);
+}
+
+async function saveConfig() {
+  const cfg = {
+    notifyOnFinish: $('notifyOnFinish').checked,
+    awwwards: {
+      enabled: $('aw_enabled').checked,
+      eagleFolderName: $('aw_folder').value.trim(),
+      extraTags: splitCsv($('aw_tags').value),
+      elementsPerSite: parseInt($('aw_eps').value, 10) || 4,
+      skipIfLiveUrlExists: true,
+      sources: [
+        { type: 'sotd', enabled: $('aw_sotd_enabled').checked, maxSites: parseInt($('aw_sotd_max').value, 10) || 7 },
+        { type: 'nominees', enabled: $('aw_nom_enabled').checked, maxSites: parseInt($('aw_nom_max').value, 10) || 10 },
+      ],
+    },
+    mobbin: {
+      enabled: $('mb_enabled').checked,
+      eagleFolderName: $('mb_folder').value.trim(),
+      platform: $('mb_platform').value.trim() || 'ios',
+      extraTags: splitCsv($('mb_tags').value),
+      skipIfSourceUrlExists: true,
+      feeds: [
+        {
+          type: 'latest',
+          enabled: $('mb_latest_enabled').checked,
+          maxApps: parseInt($('mb_latest_apps').value, 10) || 5,
+          screensPerApp: parseInt($('mb_latest_spa').value, 10) || 3,
+        },
+        {
+          type: 'category',
+          enabled: $('mb_cat_enabled').checked,
+          categories: splitLines($('mb_cat_list').value),
+          categoriesPerRun: parseInt($('mb_cat_perRun').value, 10) || 2,
+          maxAppsPerCategory: parseInt($('mb_cat_maxApps').value, 10) || 3,
+        },
+      ],
+    },
+    godly: {
+      enabled: $('gd_enabled').checked,
+      eagleFolderName: $('gd_folder').value.trim(),
+      extraTags: splitCsv($('gd_tags').value),
+      maxSites: parseInt($('gd_max').value, 10) || 5,
+      skipIfLiveUrlExists: true,
+    },
+    blocklist: {
+      awwwardsKeywords: splitLines($('bl_aw').value),
+      mobbinApps: splitLines($('bl_mb_apps').value),
+      mobbinCategories: splitLines($('bl_mb_cats').value),
+    },
+  };
+  const r = await fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cfg),
+  });
+  const data = await r.json();
+  if (data.ok) toast('已儲存 config.json');
+  else toast('儲存失敗：' + data.error, 'danger');
+}
+
+loadConfig();
+loadStatus();
+setInterval(loadStatus, 10000);
+</script>
+</body>
+</html>

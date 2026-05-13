@@ -1,26 +1,41 @@
 {
   "notifyOnFinish": true,
-
   "awwwards": {
     "enabled": true,
     "eagleFolderName": "Awwwards",
-    "extraTags": ["awwwards"],
+    "extraTags": [
+      "awwwards"
+    ],
     "elementsPerSite": 4,
     "skipIfLiveUrlExists": true,
     "sources": [
-      { "type": "sotd",      "enabled": true, "maxSites": 7 },
-      { "type": "nominees",  "enabled": true, "maxSites": 10 }
+      {
+        "type": "sotd",
+        "enabled": true,
+        "maxSites": 7
+      },
+      {
+        "type": "nominees",
+        "enabled": true,
+        "maxSites": 10
+      }
     ]
   },
-
   "mobbin": {
     "enabled": true,
     "platform": "ios",
     "eagleFolderName": "Mobbin",
-    "extraTags": ["mobbin"],
+    "extraTags": [
+      "mobbin"
+    ],
     "skipIfSourceUrlExists": true,
     "feeds": [
-      { "type": "latest", "enabled": true, "maxApps": 5, "screensPerApp": 3 },
+      {
+        "type": "latest",
+        "enabled": true,
+        "maxApps": 5,
+        "screensPerApp": 3
+      },
       {
         "type": "category",
         "enabled": true,
@@ -38,7 +53,15 @@
       }
     ]
   },
-
+  "godly": {
+    "enabled": true,
+    "eagleFolderName": "Godly",
+    "extraTags": [
+      "godly"
+    ],
+    "maxSites": 5,
+    "skipIfLiveUrlExists": true
+  },
   "blocklist": {
     "awwwardsKeywords": [],
     "mobbinApps": [],

@@ -10,3 +10,7 @@ yarn-error.log*
 .vercel
 dist/
 build/
+
+# bot runtime artifacts
+logs/
+mobbin-structure.json
