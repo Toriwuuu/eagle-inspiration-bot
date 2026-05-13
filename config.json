@@ -1,21 +1,47 @@
 {
+  "notifyOnFinish": true,
+
   "awwwards": {
     "enabled": true,
-    "source": "sotd",
-    "maxSites": 7,
-    "elementsPerSite": 4,
     "eagleFolderName": "Awwwards",
-    "extraTags": ["awwwards", "sotd"],
-    "skipIfLiveUrlExists": true
+    "extraTags": ["awwwards"],
+    "elementsPerSite": 4,
+    "skipIfLiveUrlExists": true,
+    "sources": [
+      { "type": "sotd",      "enabled": true, "maxSites": 7 },
+      { "type": "nominees",  "enabled": true, "maxSites": 10 }
+    ]
   },
+
   "mobbin": {
     "enabled": true,
     "platform": "ios",
-    "source": "latest",
-    "maxApps": 5,
-    "screensPerApp": 3,
     "eagleFolderName": "Mobbin",
     "extraTags": ["mobbin"],
-    "skipIfSourceUrlExists": true
+    "skipIfSourceUrlExists": true,
+    "feeds": [
+      { "type": "latest", "enabled": true, "maxApps": 5, "screensPerApp": 3 },
+      {
+        "type": "category",
+        "enabled": true,
+        "categories": [
+          "Health & Fitness",
+          "Travel & Transportation",
+          "Lifestyle",
+          "Shopping",
+          "Food & Drink",
+          "Finance",
+          "Productivity"
+        ],
+        "categoriesPerRun": 2,
+        "maxAppsPerCategory": 3
+      }
+    ]
+  },
+
+  "blocklist": {
+    "awwwardsKeywords": [],
+    "mobbinApps": [],
+    "mobbinCategories": []
   }
 }

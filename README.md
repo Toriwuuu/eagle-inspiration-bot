@@ -93,51 +93,82 @@ chmod +x install-schedule.sh
 
 ```json
 {
+  "notifyOnFinish": true,
   "awwwards": {
     "enabled": true,
-    "source": "sotd",
-    "maxSites": 7,
-    "elementsPerSite": 4,
     "eagleFolderName": "Awwwards",
-    "extraTags": ["awwwards", "sotd"],
-    "skipIfLiveUrlExists": true
+    "extraTags": ["awwwards"],
+    "elementsPerSite": 4,
+    "skipIfLiveUrlExists": true,
+    "sources": [
+      { "type": "sotd",     "enabled": true, "maxSites": 7 },
+      { "type": "nominees", "enabled": true, "maxSites": 10 }
+    ]
   },
   "mobbin": {
     "enabled": true,
     "platform": "ios",
-    "source": "latest",
-    "maxApps": 5,
-    "screensPerApp": 3,
     "eagleFolderName": "Mobbin",
     "extraTags": ["mobbin"],
-    "skipIfSourceUrlExists": true
+    "skipIfSourceUrlExists": true,
+    "feeds": [
+      { "type": "latest", "enabled": true, "maxApps": 5, "screensPerApp": 3 },
+      {
+        "type": "category",
+        "enabled": true,
+        "categories": ["Health & Fitness","Travel & Transportation","Lifestyle","Shopping","Food & Drink","Finance","Productivity"],
+        "categoriesPerRun": 2,
+        "maxAppsPerCategory": 3
+      }
+    ]
+  },
+  "blocklist": {
+    "awwwardsKeywords": [],
+    "mobbinApps": [],
+    "mobbinCategories": []
   }
 }
 ```
+
+### 全域
+
+| 參數 | 說明 |
+|---|---|
+| `notifyOnFinish` | 跑完跳 macOS 桌面通知顯示新增筆數。預設 `true` |
 
 ### Awwwards 區段
 
 | 參數 | 說明 |
 |---|---|
-| `enabled` | 設成 `false` 停用 Awwwards 流程 |
-| `maxSites` | 每次最多抓幾個 SOTD 作品（預設 7 ＝ 一週份） |
-| `elementsPerSite` | 每個作品最多抓幾個 element 預覽影片（預設 4）。每個 element 是一個獨立的 .mp4 設計細節（如 header 動畫、product page、scroll interaction） |
-| `eagleFolderName` | Eagle 裡的目標資料夾名稱 |
-| `extraTags` | 每筆都會額外加上的 tag |
-| `skipIfLiveUrlExists` | 跳過已存在的作品（依 live website URL 比對） |
+| `enabled` | 設成 `false` 停用整個 Awwwards 流程 |
+| `elementsPerSite` | 每個作品最多抓幾個 element 預覽影片（預設 4）|
+| `skipIfLiveUrlExists` | 跳過已存在的作品（依 live website URL 比對）|
+| `sources[]` | 來源陣列。每個來源獨立 enabled / maxSites |
+| └ `type: "sotd"` | Site of the Day — 每天 1 個精選，列表頁固定最近 7 天 |
+| └ `type: "nominees"` | Nominees — 所有提名作品，每天有大量新提名進來，週中跑也常有新東西 |
 
 ### Mobbin 區段
 
 | 參數 | 說明 |
 |---|---|
-| `enabled` | 設成 `false` 停用 Mobbin 流程 |
-| `platform` | `"ios"` 或 `"web"`（mobile App 或網頁 App）|
-| `source` | `"latest"`（目前只支援 latest feed）|
-| `maxApps` | 每次抓幾個不同的 app（預設 5）|
-| `screensPerApp` | 每個 app 最多抓幾個 flow。**注意**：mobbin latest feed 通常一個 app 只顯示 1 個預覽，這個參數目前實際上限是 1。未來若擴充進入每個 app 的細節頁就能真正生效 |
-| `eagleFolderName` | Eagle 裡的目標資料夾名稱 |
-| `extraTags` | 每筆都會額外加上的 tag |
-| `skipIfSourceUrlExists` | 跳過已存在的 flow（依 mobbin video stableId UUID 比對） |
+| `enabled` | 設成 `false` 停用整個 Mobbin 流程 |
+| `platform` | `"ios"` 或 `"web"` |
+| `skipIfSourceUrlExists` | 跳過已存在的 flow（依 mobbin video stableId UUID 比對）|
+| `feeds[]` | feed 陣列。每個 feed 獨立 enabled |
+| └ `type: "latest"` | 全平台 latest feed，固定那幾筆 |
+| └ `type: "category"` | 分類輪換：bot 用本週 ISO 週數 modulo 從 `categories[]` 挑 `categoriesPerRun` 個分類，每週自動換不重複 |
+
+### 黑名單
+
+| 參數 | 說明 |
+|---|---|
+| `awwwardsKeywords` | 作品標題 / live URL 含這些 keyword（不分大小寫）的就 skip |
+| `mobbinApps` | 這些 app 名稱的 flow 一律 skip |
+| `mobbinCategories` | 這些分類即使輪到也跳過 |
+
+### 失敗 retry
+
+mp4 下載前的 HEAD 驗證若失敗，會記到 `~/.eagle-bot/failed-urls.json`，下次 bot 跑時開頭自動重試一次；再失敗就 drop（不會無限累積）。
 
 改完不需重啟，下次跑 `node bot.js` 或排程觸發時即生效。
 
