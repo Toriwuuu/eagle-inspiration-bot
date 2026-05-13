@@ -1,0 +1,14 @@
+{
+  "name": "eagle-inspiration-bot",
+  "version": "1.0.0",
+  "description": "自動從 Awwwards 抓設計靈感存進 Eagle 收藏夾",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "postinstall": "playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  },
+  "license": "MIT"
+}

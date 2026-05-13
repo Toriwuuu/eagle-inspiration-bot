@@ -1,0 +1,8 @@
+{
+  "source": "sotd",
+  "maxSites": 7,
+  "elementsPerSite": 4,
+  "eagleFolderName": "Awwwards",
+  "extraTags": ["awwwards", "sotd"],
+  "skipIfLiveUrlExists": true
+}
