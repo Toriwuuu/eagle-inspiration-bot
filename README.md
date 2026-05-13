@@ -207,11 +207,17 @@ node bot.js --config-ui           # 啟動本機 dashboard（localhost:3030）
 
 ## Web Dashboard
 
+兩種啟動方式：
+
+**雙擊版（推薦）**：直接雙擊專案資料夾裡的 `dashboard.command`，會自動開終端機 + 瀏覽器。用完按 Ctrl-C 或關掉終端機視窗即可。
+
+**指令版**：
+
 ```bash
 node bot.js --config-ui
 ```
 
-會自動開瀏覽器到 `http://localhost:3030`，可以：
+兩種方式都會開瀏覽器到 `http://localhost:3030`，可以：
 - 開關每個來源（Awwwards / Mobbin / Godly / Land-book）
 - 調整 maxSites / maxApps 等所有參數
 - 編輯黑名單清單
