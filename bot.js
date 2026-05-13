@@ -1015,6 +1015,128 @@ async function runGodlyFlow(globalStats) {
 }
 
 // =====================================================================
+//                          Land-book 流程
+// =====================================================================
+// Land-book 是靜態圖庫（無影片）。首頁 /websites/ 列表卡片就含高解析縮圖，
+// 細節頁有 Cloudflare 嚴格挑戰所以我們只抓首頁卡片（slug 解析出標題）。
+
+const LANDBOOK_BASE = 'https://land-book.com';
+
+function parseLandbookSlug(href) {
+  // /websites/94564-floemaA-R-a-spaces-for-people-made-for-life
+  const m = href.match(/^\/websites\/(\d+)-(.+)$/);
+  if (!m) return { id: null, title: href };
+  const id = m[1];
+  let title = m[2].replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+  title = title.replace(/\b\w/g, (c) => c.toUpperCase());
+  return { id, title };
+}
+
+async function fetchLandbookCards(context, max) {
+  const page = await context.newPage();
+  await page.goto(LANDBOOK_BASE + '/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  // Land-book 首頁靠 Cloudflare，等他放行
+  await page.waitForTimeout(8000);
+  for (let i = 0; i < Math.ceil(max / 12); i++) {
+    await page.evaluate(() => window.scrollBy(0, 1500));
+    await page.waitForTimeout(500);
+  }
+  const cards = await page.evaluate(() => {
+    const out = [];
+    const anchors = document.querySelectorAll('a[href^="/websites/"]');
+    const seen = new Set();
+    for (const a of anchors) {
+      const href = a.getAttribute('href');
+      // 過濾掉同頁 anchor、無 slug、明顯不是作品卡片的連結
+      if (!href || href.includes('#') || !/^\/websites\/\d+-.+/.test(href)) continue;
+      if (seen.has(href)) continue;
+      seen.add(href);
+      let card = a.closest('article, li, div');
+      while (card && !card.querySelector('img')) {
+        card = card.parentElement;
+        if (!card || card.tagName === 'BODY') {
+          card = null;
+          break;
+        }
+      }
+      const img = card?.querySelector('img');
+      const imgSrc = img?.src || img?.getAttribute('data-src') || null;
+      if (!imgSrc || /favicon|logo|icon/i.test(imgSrc)) continue;
+      out.push({ href, imgSrc });
+    }
+    return out;
+  });
+  await page.close();
+  return cards.slice(0, max);
+}
+
+async function runLandbookFlow(globalStats) {
+  const cfg = CONFIG.landbook;
+  if (!cfg?.enabled) {
+    log('Land-book 流程：已停用，跳過');
+    return;
+  }
+  log('\n========== Land-book 流程 ==========');
+  const folderId = await ensureFolder(cfg.eagleFolderName);
+  const { browser, context } = await openHeadlessBrowser();
+  const stats = { added: 0, skipped: 0, failed: 0, blocked: 0 };
+  try {
+    log(`從 ${LANDBOOK_BASE}/ 抓首頁卡片…`);
+    const cards = await fetchLandbookCards(context, cfg.maxSites);
+    log(`找到 ${cards.length} 張卡片`);
+    for (const [i, card] of cards.entries()) {
+      const detailUrl = LANDBOOK_BASE + card.href;
+      const { title } = parseLandbookSlug(card.href);
+      log(`\n[landbook ${i + 1}/${cards.length}] ${title}`);
+      try {
+        const blockedBy = isAwwwardsBlocked({ title, tags: [] }, CONFIG.blocklist);
+        if (blockedBy) {
+          log(`  🚫 黑名單命中（"${blockedBy}"）`);
+          stats.blocked++;
+          continue;
+        }
+        if (cfg.skipIfSourceUrlExists) {
+          const exist = await callEagle('item_get', { url: detailUrl, limit: 1 });
+          const list = exist?.data || exist?.result || exist;
+          if (Array.isArray(list) && list.length > 0) {
+            log('  ⏭ 已存在');
+            stats.skipped++;
+            continue;
+          }
+        }
+        await callEagle('item_add', {
+          folders: [folderId],
+          tags: cfg.extraTags,
+          annotation: [
+            `作品：${title}`,
+            `來源：Land-book`,
+            `Detail: ${detailUrl}`,
+            `抓取時間：${new Date().toISOString().slice(0, 10)}`,
+          ].join('\n'),
+          items: [
+            {
+              source: { type: 'url', url: card.imgSrc, website: detailUrl },
+              name: title,
+            },
+          ],
+        });
+        log('  ✓ 已加入 Eagle');
+        stats.added++;
+      } catch (e) {
+        log('  ❌ 失敗：', e.message);
+        stats.failed++;
+      }
+    }
+  } finally {
+    await browser.close();
+  }
+  log(
+    `\nLand-book 結果：新增 ${stats.added}／跳過 ${stats.skipped}／黑名單 ${stats.blocked}／失敗 ${stats.failed}`
+  );
+  globalStats.landbook = stats;
+}
+
+// =====================================================================
 //                  Mobbin 主題手動搜尋（--search）
 // =====================================================================
 
@@ -1186,6 +1308,7 @@ async function generateMonthlyReport(yearMonth) {
     CONFIG.awwwards?.eagleFolderName,
     CONFIG.mobbin?.eagleFolderName,
     CONFIG.godly?.eagleFolderName,
+    CONFIG.landbook?.eagleFolderName,
   ].filter(Boolean);
 
   const tree = await callEagle('folder_get', { getAllHierarchy: true });
@@ -1222,7 +1345,7 @@ async function generateMonthlyReport(yearMonth) {
 
   const stats = {
     total: filtered.length,
-    bySource: { awwwards: 0, mobbin: 0, godly: 0, other: 0 },
+    bySource: { awwwards: 0, mobbin: 0, godly: 0, landbook: 0, other: 0 },
     byKind: { video: 0, image: 0 },
     awwwardsBreakdown: {},
     mobbinApps: {},
@@ -1257,6 +1380,8 @@ async function generateMonthlyReport(yearMonth) {
       }
     } else if (tags.includes('godly')) {
       stats.bySource.godly++;
+    } else if (tags.includes('landbook')) {
+      stats.bySource.landbook++;
     } else {
       stats.bySource.other++;
     }
@@ -1286,6 +1411,7 @@ async function generateMonthlyReport(yearMonth) {
 | Awwwards | ${stats.bySource.awwwards} | ${pct(stats.bySource.awwwards)}% |
 | Mobbin | ${stats.bySource.mobbin} | ${pct(stats.bySource.mobbin)}% |
 | Godly | ${stats.bySource.godly} | ${pct(stats.bySource.godly)}% |
+| Land-book | ${stats.bySource.landbook} | ${pct(stats.bySource.landbook)}% |
 ${stats.bySource.other ? `| 其他 | ${stats.bySource.other} | ${pct(stats.bySource.other)}% |\n` : ''}
 
 ## Awwwards 細分
@@ -1313,7 +1439,142 @@ ${stats.samples.map((s) => `- ${s.name} · .${s.ext} · [${s.tags.join(', ')}]`)
   const reportPath = path.join(LOGS_DIR, `monthly-${yearMonth}.md`);
   fs.writeFileSync(reportPath, md);
   log(`✓ 月報已寫到 ${reportPath}`);
-  log(`  總計 ${stats.total} 筆（Awwwards ${stats.bySource.awwwards} / Mobbin ${stats.bySource.mobbin} / Godly ${stats.bySource.godly}）`);
+  log(`  總計 ${stats.total} 筆（Awwwards ${stats.bySource.awwwards} / Mobbin ${stats.bySource.mobbin} / Godly ${stats.bySource.godly} / Land-book ${stats.bySource.landbook}）`);
+}
+
+// =====================================================================
+//                      Dashboard 預覽輔助
+// =====================================================================
+
+// 撈所有來源資料夾、依日期遞減回近 N 天的 items（包含可直接播的 source URL）
+async function fetchRecentItems(days) {
+  const folderNames = [
+    CONFIG.awwwards?.eagleFolderName,
+    CONFIG.mobbin?.eagleFolderName,
+    CONFIG.godly?.eagleFolderName,
+    CONFIG.landbook?.eagleFolderName,
+  ].filter(Boolean);
+
+  const tree = await callEagle('folder_get', { getAllHierarchy: true });
+  const tList = tree?.data || tree?.result || tree;
+  const folderIds = [];
+  for (const name of folderNames) {
+    const f = findFolderByName(tList, name);
+    if (f) folderIds.push(f.id);
+  }
+  if (!folderIds.length) return [];
+
+  const all = [];
+  for (const fid of folderIds) {
+    const r = await callEagle('item_get', { folders: [fid], fullDetails: true, limit: 500 });
+    const items = r?.data || [];
+    all.push(...items);
+  }
+
+  const todayMs = Date.now();
+  const cutoffMs = todayMs - days * 86400 * 1000;
+  const parsed = all
+    .map((it) => {
+      const m = (it.annotation || '').match(/抓取時間：(\d{4}-\d{2}-\d{2})/);
+      const date = m ? m[1] : null;
+      const ms = date ? new Date(date).getTime() : 0;
+      const ext = (it.ext || '').toLowerCase();
+      const isVideo = /^(mp4|webm|mov|m4v)$/i.test(ext);
+      const tags = it.tags || [];
+      let source = 'other';
+      if (tags.includes('awwwards')) source = 'awwwards';
+      else if (tags.includes('mobbin')) source = 'mobbin';
+      else if (tags.includes('godly')) source = 'godly';
+      else if (tags.includes('landbook')) source = 'landbook';
+      // sourceUrl: Eagle 把原始 URL 存在 url 欄位
+      const sourceUrl = it.url || null;
+      return {
+        id: it.id,
+        name: it.name,
+        date,
+        ms,
+        ext,
+        isVideo,
+        tags,
+        source,
+        sourceUrl,
+        annotation: it.annotation || '',
+      };
+    })
+    .filter((x) => x.ms >= cutoffMs)
+    .sort((a, b) => b.ms - a.ms)
+    .slice(0, 60);
+  return parsed;
+}
+
+// 為了 dashboard preview，重用 generateMonthlyReport 的統計邏輯但不寫檔
+async function previewMonthlyMarkdown(yearMonth) {
+  // 簡化版：直接呼叫既有 generateMonthlyReport 後讀檔；但 generateMonthlyReport 會寫檔
+  // 為了不污染 logs/，這裡複製核心邏輯成 inline，回傳字串即可
+  const [year, month] = yearMonth.split('-').map(Number);
+
+  const folderNames = [
+    CONFIG.awwwards?.eagleFolderName,
+    CONFIG.mobbin?.eagleFolderName,
+    CONFIG.godly?.eagleFolderName,
+    CONFIG.landbook?.eagleFolderName,
+  ].filter(Boolean);
+  const tree = await callEagle('folder_get', { getAllHierarchy: true });
+  const tList = tree?.data || tree?.result || tree;
+  const folderIds = [];
+  for (const name of folderNames) {
+    const f = findFolderByName(tList, name);
+    if (f) folderIds.push(f.id);
+  }
+  if (!folderIds.length) return `# ${yearMonth}\n\n*找不到任何來源資料夾*`;
+
+  const allItems = [];
+  for (const fid of folderIds) {
+    const r = await callEagle('item_get', { folders: [fid], fullDetails: true, limit: 1000 });
+    allItems.push(...(r?.data || []));
+  }
+  const monthPrefix = yearMonth;
+  const filtered = allItems.filter((it) =>
+    (it.annotation || '').match(/抓取時間：(\d{4}-\d{2}-\d{2})/)?.[1]?.startsWith(monthPrefix)
+  );
+
+  const bySource = { awwwards: 0, mobbin: 0, godly: 0, landbook: 0, other: 0 };
+  const byKind = { video: 0, image: 0 };
+  const mobbinApps = {};
+  for (const it of filtered) {
+    const tags = it.tags || [];
+    const ext = (it.ext || '').toLowerCase();
+    if (/^(mp4|webm|mov|m4v)$/i.test(ext)) byKind.video++;
+    else byKind.image++;
+    if (tags.includes('awwwards')) bySource.awwwards++;
+    else if (tags.includes('mobbin')) {
+      bySource.mobbin++;
+      const m = (it.annotation || '').match(/^App:\s*(.+?)$/m);
+      if (m && m[1] !== '(unknown)') mobbinApps[m[1]] = (mobbinApps[m[1]] || 0) + 1;
+    } else if (tags.includes('godly')) bySource.godly++;
+    else if (tags.includes('landbook')) bySource.landbook++;
+    else bySource.other++;
+  }
+  const total = filtered.length;
+  const pct = (n) => (total ? Math.round((100 * n) / total) : 0);
+  const topApps = Object.entries(mobbinApps).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  return `# 即時月報預覽 ${yearMonth}
+
+> 此份為 dashboard 即時計算（未寫入檔案）
+
+- 本月已新增 **${total}** 筆
+- 影片 ${byKind.video} · 圖片 ${byKind.image}
+
+## 來源比例
+- Awwwards ${bySource.awwwards}（${pct(bySource.awwwards)}%）
+- Mobbin ${bySource.mobbin}（${pct(bySource.mobbin)}%）
+- Godly ${bySource.godly}（${pct(bySource.godly)}%）
+- Land-book ${bySource.landbook}（${pct(bySource.landbook)}%）
+
+## Top Mobbin Apps
+${topApps.length ? topApps.map(([app, n]) => `- ${app} × ${n}`).join('\n') : '*（本月暫無）*'}
+`;
 }
 
 // =====================================================================
@@ -1357,6 +1618,16 @@ async function startConfigUI() {
           isoWeek: getIsoWeek(),
         };
         sendJSON(status);
+      } else if (req.method === 'GET' && req.url.startsWith('/api/recent')) {
+        const u = new URL(req.url, 'http://x');
+        const days = parseInt(u.searchParams.get('days') || '7', 10);
+        const items = await fetchRecentItems(days);
+        sendJSON({ days, items });
+      } else if (req.method === 'GET' && req.url.startsWith('/api/monthly-preview')) {
+        const u = new URL(req.url, 'http://x');
+        const ym = u.searchParams.get('month') || new Date().toISOString().slice(0, 7);
+        const md = await previewMonthlyMarkdown(ym);
+        sendJSON({ month: ym, markdown: md });
       } else {
         res.writeHead(404);
         res.end('Not Found');
@@ -1450,6 +1721,12 @@ async function main() {
     log('❌ Godly 流程錯誤：', e.message);
   }
 
+  try {
+    await runLandbookFlow(globalStats);
+  } catch (e) {
+    log('❌ Land-book 流程錯誤：', e.message);
+  }
+
   // 跑完順便補上個月的月報（若尚未存在）
   try {
     await maybeAutoGenerateLastMonthReport();
@@ -1461,8 +1738,9 @@ async function main() {
   const aw = globalStats.awwwards || { added: 0 };
   const mb = globalStats.mobbin || { added: 0 };
   const gd = globalStats.godly || { added: 0 };
-  const total = aw.added + mb.added + gd.added;
-  const body = `本週新增 ${total} 筆 · Awwwards ${aw.added} · Mobbin ${mb.added}（${mb.appCount?.size || 0} app） · Godly ${gd.added}`;
+  const lb = globalStats.landbook || { added: 0 };
+  const total = aw.added + mb.added + gd.added + lb.added;
+  const body = `本週新增 ${total} 筆 · Awwwards ${aw.added} · Mobbin ${mb.added}（${mb.appCount?.size || 0} app） · Godly ${gd.added} · Land-book ${lb.added}`;
   notify('Eagle Inspiration Bot', body);
   log('\n=== 結束 ===');
   log(body);

@@ -122,6 +122,90 @@
   .toast.show { opacity: 1; transform: translateY(0); }
   .toast.success { border-color: var(--success); }
   .toast.danger { border-color: var(--danger); }
+
+  /* Preview 區塊 */
+  .thumbs {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .thumb {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .thumb .media {
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    background: #000;
+    object-fit: cover;
+    display: block;
+  }
+  .thumb .meta {
+    padding: 8px 10px;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .thumb .meta .name {
+    color: var(--text);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .thumb .meta .sub {
+    color: var(--muted);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-top: 3px;
+  }
+  .thumb .badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    margin-right: 4px;
+  }
+  .badge.awwwards { background: rgba(252, 211, 77, 0.18); color: #fcd34d; }
+  .badge.mobbin   { background: rgba(108, 142, 255, 0.20); color: #8aa7ff; }
+  .badge.godly    { background: rgba(74, 222, 128, 0.18); color: #4ade80; }
+  .badge.landbook { background: rgba(248, 113, 113, 0.18); color: #f87171; }
+  .badge.other    { background: var(--panel); color: var(--muted); }
+  .empty { color: var(--muted); padding: 20px 0; text-align: center; font-size: 13px; }
+
+  .md-preview {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    font: 12.5px/1.55 SF Mono, Menlo, monospace;
+    white-space: pre-wrap;
+    color: var(--muted);
+    max-height: 420px;
+    overflow-y: auto;
+  }
+  .md-preview strong { color: var(--text); }
+
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+  .tab {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 6px 14px;
+    font-size: 12.5px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .tab.active { background: var(--panel-2); color: var(--text); border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -244,6 +328,22 @@
     </div>
 
     <div class="section">
+      <h2>Land-book <label class="switch"><input type="checkbox" id="lb_enabled"><span class="slider"></span></label></h2>
+      <div class="row">
+        <label for="lb_folder">Eagle 資料夾</label>
+        <input type="text" id="lb_folder">
+      </div>
+      <div class="row">
+        <label for="lb_max">maxSites</label>
+        <input type="number" id="lb_max" min="1" max="40">
+      </div>
+      <div class="row">
+        <label for="lb_tags">額外 tag</label>
+        <input type="text" id="lb_tags">
+      </div>
+    </div>
+
+    <div class="section">
       <h2>黑名單</h2>
       <div class="row">
         <label for="bl_aw">Awwwards 關鍵字</label>
@@ -259,6 +359,34 @@
       </div>
     </div>
   </form>
+
+  <div class="section">
+    <h2>預覽 <span style="font-weight:400;text-transform:none;letter-spacing:0">近期成果</span></h2>
+    <div class="tabs">
+      <button type="button" class="tab active" data-tab="recent">縮圖牆</button>
+      <button type="button" class="tab" data-tab="monthly">本月即時月報</button>
+    </div>
+    <div id="tab_recent">
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+        <label style="color:var(--muted);font-size:12px">天數</label>
+        <select id="recent_days" style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 10px">
+          <option value="3">3 天</option>
+          <option value="7" selected>7 天</option>
+          <option value="14">14 天</option>
+          <option value="30">30 天</option>
+        </select>
+        <button type="button" class="ghost" onclick="loadRecent()">重新整理</button>
+        <span id="recent_summary" style="color:var(--muted);font-size:12px;margin-left:auto"></span>
+      </div>
+      <div class="thumbs" id="thumbs"></div>
+    </div>
+    <div id="tab_monthly" style="display:none">
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+        <button type="button" class="ghost" onclick="loadMonthly()">重新整理</button>
+      </div>
+      <div class="md-preview" id="md_preview">載入中…</div>
+    </div>
+  </div>
 </div>
 
 <div class="footer">
@@ -328,6 +456,12 @@ async function loadConfig() {
   $('gd_max').value = cfg.godly?.maxSites || 5;
   $('gd_tags').value = (cfg.godly?.extraTags || []).join(', ');
 
+  // Land-book
+  $('lb_enabled').checked = !!cfg.landbook?.enabled;
+  $('lb_folder').value = cfg.landbook?.eagleFolderName || 'Land-book';
+  $('lb_max').value = cfg.landbook?.maxSites || 8;
+  $('lb_tags').value = (cfg.landbook?.extraTags || ['landbook']).join(', ');
+
   // Blocklist
   $('bl_aw').value = (cfg.blocklist?.awwwardsKeywords || []).join('\n');
   $('bl_mb_apps').value = (cfg.blocklist?.mobbinApps || []).join('\n');
@@ -384,6 +518,13 @@ async function saveConfig() {
       maxSites: parseInt($('gd_max').value, 10) || 5,
       skipIfLiveUrlExists: true,
     },
+    landbook: {
+      enabled: $('lb_enabled').checked,
+      eagleFolderName: $('lb_folder').value.trim() || 'Land-book',
+      extraTags: splitCsv($('lb_tags').value),
+      maxSites: parseInt($('lb_max').value, 10) || 8,
+      skipIfSourceUrlExists: true,
+    },
     blocklist: {
       awwwardsKeywords: splitLines($('bl_aw').value),
       mobbinApps: splitLines($('bl_mb_apps').value),
@@ -400,8 +541,80 @@ async function saveConfig() {
   else toast('儲存失敗：' + data.error, 'danger');
 }
 
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+async function loadRecent() {
+  const days = $('recent_days').value;
+  const cont = $('thumbs');
+  cont.innerHTML = '<div class="empty">載入中…</div>';
+  try {
+    const r = await fetch('/api/recent?days=' + days);
+    const data = await r.json();
+    const items = data.items || [];
+    $('recent_summary').textContent = `共 ${items.length} 筆 · 近 ${data.days} 天`;
+    if (!items.length) {
+      cont.innerHTML = '<div class="empty">這段期間還沒有新增任何靈感</div>';
+      return;
+    }
+    cont.innerHTML = items.map((it) => {
+      const url = it.sourceUrl || '';
+      let mediaTag = '';
+      if (it.isVideo && url) {
+        mediaTag = `<video class="media" muted loop playsinline preload="metadata" onmouseenter="this.play()" onmouseleave="this.pause();this.currentTime=0" src="${escapeHtml(url)}"></video>`;
+      } else if (url) {
+        mediaTag = `<img class="media" loading="lazy" src="${escapeHtml(url)}" alt="${escapeHtml(it.name)}" onerror="this.style.opacity=0.2">`;
+      } else {
+        mediaTag = `<div class="media" style="display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px">無預覽</div>`;
+      }
+      return `
+        <div class="thumb">
+          ${mediaTag}
+          <div class="meta">
+            <div class="name" title="${escapeHtml(it.name)}">${escapeHtml(it.name)}</div>
+            <div class="sub"><span class="badge ${it.source}">${it.source}</span>${escapeHtml(it.date || '')}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    cont.innerHTML = `<div class="empty">載入失敗：${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function loadMonthly() {
+  const el = $('md_preview');
+  el.textContent = '載入中…';
+  try {
+    const r = await fetch('/api/monthly-preview');
+    const data = await r.json();
+    // 簡易把 **xxx** 換成 <strong>
+    const html = escapeHtml(data.markdown || '').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    el.innerHTML = html;
+  } catch (e) {
+    el.textContent = '載入失敗：' + e.message;
+  }
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t) => {
+    t.classList.toggle('active', t.dataset.tab === name);
+  });
+  $('tab_recent').style.display = name === 'recent' ? '' : 'none';
+  $('tab_monthly').style.display = name === 'monthly' ? '' : 'none';
+  if (name === 'monthly') loadMonthly();
+}
+document.querySelectorAll('.tab').forEach((t) => {
+  t.addEventListener('click', () => switchTab(t.dataset.tab));
+});
+$('recent_days').addEventListener('change', loadRecent);
+
 loadConfig();
 loadStatus();
+loadRecent();
 setInterval(loadStatus, 10000);
 </script>
 </body>

@@ -15,6 +15,8 @@
 
 **Godly.website**：策展型 web design gallery，hero `.mp4` 直連、不需登入
 
+**Land-book**：靜態網頁設計圖庫，首頁卡片含高解析縮圖（純圖片來源）
+
 **功能**：
 - macOS 桌面通知：跑完跳「本週新增 X 筆」
 - 黑名單：keyword / app / category 自動 skip
@@ -183,7 +185,7 @@ mp4 下載前的 HEAD 驗證若失敗，會記到 `~/.eagle-bot/failed-urls.json
 ## CLI 指令一覽
 
 ```bash
-node bot.js                       # 跑全部來源（Awwwards + Mobbin + Godly）
+node bot.js                       # 跑全部來源（Awwwards + Mobbin + Godly + Land-book）
 node bot.js --setup-mobbin        # 首次設定 Mobbin 登入
 node bot.js --probe-mobbin        # 重新勘查 mobbin 頁面結構
 node bot.js --search onboarding 10   # 按主題搜尋 mobbin，存 10 筆進 Eagle
@@ -210,10 +212,12 @@ node bot.js --config-ui
 ```
 
 會自動開瀏覽器到 `http://localhost:3030`，可以：
-- 開關每個來源（Awwwards / Mobbin / Godly）
+- 開關每個來源（Awwwards / Mobbin / Godly / Land-book）
 - 調整 maxSites / maxApps 等所有參數
 - 編輯黑名單清單
 - 看當前 Mobbin session 狀態、失敗 URL 數量、ISO 週數
+- **縮圖牆預覽**：近 3/7/14/30 天的新增 items，影片 hover 自動播放
+- **即時月報**：當月統計（無需等到月底自動生成）
 
 設定改完按右下「儲存設定」會寫回 `config.json`，下次 bot 跑時即生效。按 Ctrl-C 結束 dashboard。
 

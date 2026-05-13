@@ -62,6 +62,15 @@
     "maxSites": 5,
     "skipIfLiveUrlExists": true
   },
+  "landbook": {
+    "enabled": true,
+    "eagleFolderName": "Land-book",
+    "extraTags": [
+      "landbook"
+    ],
+    "maxSites": 8,
+    "skipIfSourceUrlExists": true
+  },
   "blocklist": {
     "awwwardsKeywords": [],
     "mobbinApps": [],
