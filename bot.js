@@ -15,7 +15,7 @@
 //   node bot.js --probe-mobbin   # 只跑 Mobbin 結構勘查
 
 const { chromium } = require('playwright');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -23,7 +23,10 @@ const os = require('os');
 // ---------- 路徑與設定 ----------
 const ROOT = __dirname;
 const CONFIG = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8'));
-const EAGLE_CLI = path.join(os.homedir(), '.claude/skills/eagle-skill/scripts/eagle-api-cli.js');
+// Eagle 內建 REST API（Eagle App 一開啟就有，不需要任何 plugin）
+// 預設 http://localhost:41595，可用環境變數覆寫
+const EAGLE_API = process.env.EAGLE_API_BASE || 'http://localhost:41595';
+const EAGLE_API_TOKEN = process.env.EAGLE_API_TOKEN || '';
 const LOGS_DIR = path.join(ROOT, 'logs');
 const EAGLE_BOT_DIR = path.join(os.homedir(), '.eagle-bot');
 const MOBBIN_PROFILE_DIR = path.join(EAGLE_BOT_DIR, 'mobbin-profile');
@@ -69,6 +72,40 @@ function getIsoWeek(date = new Date()) {
   return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
 }
 
+// 手動單跑某來源時，把列表撈深一點，這樣可以跳過已抓過的、繼續往下湊
+function poolSizeForManual(target, multiplier = 5, cap = 60) {
+  return Math.max(target, Math.min(target * multiplier, cap));
+}
+
+// 預載指定資料夾裡的所有 annotation，用 regex 抽出某個 key 的 URL（例：Awwwards: https://...）
+// 目的：在進 detail 頁之前就過濾掉已抓過的項目，省下大量網路請求
+function normalizeUrl(u) {
+  if (!u) return u;
+  // 拿掉常見的 utm / ref query，方便和 listing URL 對齊
+  return u.replace(/[?&](ref|utm_\w+)=[^&]*/gi, '').replace(/[?&]$/, '').trim();
+}
+async function loadExistingUrlsFromAnnotation(folderId, pattern) {
+  try {
+    const existing = await callEagle('item_get', {
+      folders: [folderId],
+      fullDetails: true,
+      limit: 1000,
+    });
+    const list = existing?.data || existing?.result || existing;
+    const set = new Set();
+    if (Array.isArray(list)) {
+      for (const it of list) {
+        const m = (it.annotation || '').match(pattern);
+        if (m) set.add(normalizeUrl(m[1]));
+      }
+    }
+    return set;
+  } catch (e) {
+    log(`⚠ 預載 Eagle 資料夾現有 URL 失敗：${e.message}`);
+    return new Set();
+  }
+}
+
 // 依本週週數從 categories 陣列輪換 N 個（每週遞進 N 個位置，循環）
 function pickCategoriesForWeek(categories, count) {
   if (!Array.isArray(categories) || categories.length === 0 || count < 1) return [];
@@ -81,30 +118,181 @@ function pickCategoriesForWeek(categories, count) {
   return [...new Set(out)];
 }
 
-// 呼叫 Eagle skill 的 CLI
-function callEagle(tool, params) {
-  return new Promise((resolve, reject) => {
-    const proc = spawn('node', [EAGLE_CLI, 'call', tool, '--json', JSON.stringify(params)]);
-    let stdout = '';
-    let stderr = '';
-    proc.stdout.on('data', (d) => (stdout += d));
-    proc.stderr.on('data', (d) => (stderr += d));
-    proc.on('close', (code) => {
-      if (code !== 0) {
-        return reject(new Error(`Eagle CLI failed (${tool}): ${stderr.trim() || stdout.trim()}`));
+// ---------- Eagle 內建 REST API 相容層 ----------
+// 對外保留原本的 callEagle(tool, params) 介面，內部全部改打 Eagle 內建 API。
+// 好處：bot.js 其他地方一行都不用改，也不再依賴 Claude skill 或 Eagle MCP plugin。
+
+async function eagleFetch(method, pathname, { query, body } = {}) {
+  const qs = new URLSearchParams();
+  if (query) {
+    for (const [k, v] of Object.entries(query)) {
+      if (v === undefined || v === null) continue;
+      qs.set(k, Array.isArray(v) ? v.join(',') : String(v));
+    }
+  }
+  if (EAGLE_API_TOKEN) qs.set('token', EAGLE_API_TOKEN);
+  const q = qs.toString();
+  const url = EAGLE_API + pathname + (q ? `?${q}` : '');
+  const opts = { method, headers: {} };
+  if (body !== undefined) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  let r;
+  try {
+    r = await fetch(url, opts);
+  } catch (e) {
+    throw new Error(`Eagle API 連不上（${EAGLE_API}）：${e.message}`);
+  }
+  let json = null;
+  try { json = await r.json(); } catch { /* 非 JSON 回應 */ }
+  if (!r.ok || (json && json.status && json.status !== 'success')) {
+    const msg = (json && (json.message || JSON.stringify(json))) || `HTTP ${r.status}`;
+    throw new Error(`Eagle API 錯誤 (${pathname}): ${msg}`);
+  }
+  return json;
+}
+
+// 「依 URL 找」是兜底去重用的，但內建 API 不支援 url 過濾。
+// 折衷：掃近 1000 筆最新項目，比對 item.url 或 annotation 內含這個網址。
+// 加 5 分鐘快取，避免 loop 裡每筆都重撈。
+let _recentCache = { at: 0, items: [] };
+async function eagleRecentItems() {
+  if (_recentCache.items.length && Date.now() - _recentCache.at < 5 * 60 * 1000) {
+    return _recentCache.items;
+  }
+  const j = await eagleFetch('GET', '/api/item/list', { query: { limit: 1000 } });
+  _recentCache = { at: Date.now(), items: j?.data || [] };
+  return _recentCache.items;
+}
+
+// 內建 API 的 folders 過濾「不含子資料夾」，但舊 MCP 是會遞迴的。
+// Mobbin / Land-book 的 item 都被 reorganize 搬進子資料夾，所以查根資料夾時
+// 要把每個 folder id 展開成「自己 + 所有子孫」，否則月報 / 縮圖牆會看不到它們。
+let _folderTreeCache = { at: 0, tree: [] };
+async function eagleFolderTree() {
+  if (_folderTreeCache.tree.length && Date.now() - _folderTreeCache.at < 60 * 1000) {
+    return _folderTreeCache.tree;
+  }
+  const j = await eagleFetch('GET', '/api/folder/list');
+  _folderTreeCache = { at: Date.now(), tree: j?.data || [] };
+  return _folderTreeCache.tree;
+}
+function collectDescendantIds(nodes, wanted, acc, capturing) {
+  for (const f of nodes) {
+    const isTarget = capturing || wanted.has(f.id);
+    if (isTarget) acc.add(f.id);
+    if (f.children && f.children.length) {
+      collectDescendantIds(f.children, wanted, acc, isTarget);
+    }
+  }
+  return acc;
+}
+async function expandFolderIds(ids) {
+  const wanted = new Set(ids);
+  const tree = await eagleFolderTree();
+  const acc = collectDescendantIds(tree, wanted, new Set(), false);
+  for (const id of ids) acc.add(id); // 保底：要求的 id 一定包含
+  return [...acc];
+}
+
+async function callEagle(tool, params = {}) {
+  switch (tool) {
+    case 'get_app_info':
+      return eagleFetch('GET', '/api/application/info');
+
+    case 'folder_get': {
+      // 內建 /api/folder/list 直接回完整巢狀資料夾樹（每層有 children）
+      const j = await eagleFetch('GET', '/api/folder/list');
+      return { data: j?.data || [] };
+    }
+
+    case 'folder_create': {
+      const out = [];
+      for (const f of params.folders || []) {
+        const j = await eagleFetch('POST', '/api/folder/create', {
+          body: { folderName: f.name, ...(f.parentId ? { parent: f.parentId } : {}) },
+        });
+        if (j?.data) out.push(j.data);
       }
-      try {
-        resolve(JSON.parse(stdout));
-      } catch (e) {
-        reject(new Error(`Eagle CLI returned invalid JSON (${tool}): ${stdout.slice(0, 200)}`));
+      _folderTreeCache.at = 0; // 新資料夾建好，失效快取
+      return { data: out };
+    }
+
+    case 'item_get': {
+      if (params.url) {
+        const target = normalizeUrl(params.url);
+        const items = await eagleRecentItems();
+        const hit = items.filter(
+          (it) =>
+            normalizeUrl(it.url || '') === target ||
+            (it.annotation || '').includes(params.url)
+        );
+        return { data: hit.slice(0, params.limit || hit.length) };
       }
-    });
-  });
+      const query = { limit: params.limit || 200 };
+      if (params.folders && params.folders.length) {
+        query.folders = await expandFolderIds(params.folders); // 含子資料夾
+      }
+      if (params.tags && params.tags.length) query.tags = params.tags;
+      const j = await eagleFetch('GET', '/api/item/list', { query });
+      return { data: j?.data || [] };
+    }
+
+    case 'item_add': {
+      const sharedTags = params.tags || [];
+      const folderId = (params.folders || [])[0];
+      let ok = 0;
+      let lastErr = null;
+      for (const it of params.items || []) {
+        const src = it.source || {};
+        const mediaUrl = src.url;
+        try {
+          await eagleFetch('POST', '/api/item/addFromURL', {
+            body: {
+              url: mediaUrl,
+              name: it.name || 'untitled',
+              // 跟舊 MCP plugin 行為一致：item.url 存「來源頁網址」(作品/詳情頁)，
+              // 不是媒體檔網址。這樣新舊資料一致，dashboard 邏輯不用改。
+              // 點擊用的連結是 dashboard 從 annotation 解析的，不靠 item.url。
+              website: src.website || mediaUrl,
+              tags: [...sharedTags, ...(it.tags || [])],
+              annotation: it.annotation || params.annotation || '',
+              ...(folderId ? { folderId } : {}),
+            },
+          });
+          ok++;
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+      if (ok === 0 && lastErr) throw lastErr;
+      _recentCache.at = 0; // 失效快取，讓後續去重看得到剛加進去的
+      return { data: { added: ok } };
+    }
+
+    case 'item_update': {
+      for (const it of params.items || []) {
+        const body = { id: it.id };
+        const folders = it.folders || params.folders;
+        const tags = it.tags || params.tags;
+        const annotation = it.annotation ?? params.annotation;
+        if (folders) body.folders = folders;
+        if (tags) body.tags = tags;
+        if (annotation !== undefined) body.annotation = annotation;
+        await eagleFetch('POST', '/api/item/update', { body });
+      }
+      return { data: { updated: (params.items || []).length } };
+    }
+
+    default:
+      throw new Error(`callEagle: 未支援的動作 ${tool}`);
+  }
 }
 
 // Eagle 資料夾
 async function ensureFolder(name) {
-  const tree = await callEagle('folder_get', { getAllHierarchy: true });
+  const tree = await callEagle('folder_get', { getAllHierarchy: true, fullDetails: true });
   const list = tree?.data || tree?.result || tree;
   const found = findFolderByName(list, name);
   if (found) {
@@ -125,6 +313,41 @@ function findFolderByName(folders, name) {
     if (sub) return sub;
   }
   return null;
+}
+
+function findDirectChildByName(folders, name) {
+  if (!Array.isArray(folders)) return null;
+  return folders.find((f) => f.name === name) || null;
+}
+
+// 依路徑（陣列）確保整條資料夾鏈存在；沒有就一層一層建。回傳最末層 folder id
+// 例：ensureFolderPath(['Mobbin', 'iOS', 'SaaS']) → 'leafFolderId'
+async function ensureFolderPath(pathArray) {
+  if (!Array.isArray(pathArray) || !pathArray.length) {
+    throw new Error('ensureFolderPath: 空路徑');
+  }
+  const tree = await callEagle('folder_get', { getAllHierarchy: true, fullDetails: true });
+  let level = tree?.data || tree?.result || tree || [];
+  let parentId = null;
+  let leafId = null;
+  for (const segment of pathArray) {
+    const existing = findDirectChildByName(level, segment);
+    if (existing) {
+      leafId = existing.id;
+      parentId = existing.id;
+      level = existing.children || existing.folders || [];
+    } else {
+      const created = await callEagle('folder_create', {
+        folders: [{ name: segment, ...(parentId ? { parentId } : {}) }],
+      });
+      const newFolder = (created?.data || created?.result || created)?.[0] || created;
+      leafId = newFolder.id || newFolder.folderId;
+      parentId = leafId;
+      level = [];
+      log(`  建立資料夾「${pathArray.slice(0, pathArray.indexOf(segment) + 1).join(' / ')}」`);
+    }
+  }
+  return leafId;
 }
 
 // 失敗 URL 載入 / 寫入
@@ -170,15 +393,50 @@ async function openHeadlessBrowser() {
   return { browser, context };
 }
 
-async function fetchAwwwardsListing(context, listUrl, max) {
-  const page = await context.newPage();
-  await page.goto(listUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+async function readAwwwardsSiteUrls(page) {
   const hrefs = await page.$$eval('a[href^="/sites/"]', (els) =>
     els.map((a) => a.getAttribute('href'))
   );
-  await page.close();
   const unique = [...new Set(hrefs)].filter((h) => /^\/sites\/[a-z0-9-]+\/?$/i.test(h));
-  return unique.slice(0, max).map((h) => AWWWARDS_BASE + h);
+  return unique.map((h) => AWWWARDS_BASE + h);
+}
+
+async function fetchAwwwardsListing(context, listUrl, opts = {}) {
+  // 兼容兩種 API：傳 number 就是 legacy max；傳 object 就是 progressive 模式
+  const isLegacy = typeof opts === 'number';
+  const max = isLegacy ? opts : (opts.max || 100);
+  const targetNew = isLegacy ? 0 : (opts.targetNew || 0);
+  const existingSet = isLegacy ? null : (opts.existingSet || null);
+  const maxScrolls = isLegacy ? 0 : (opts.maxScrolls || 0);
+
+  const page = await context.newPage();
+  try {
+    await page.goto(listUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    let urls = await readAwwwardsSiteUrls(page);
+
+    if (targetNew && existingSet) {
+      let lastCount = urls.length;
+      let stagnant = 0;
+      for (let scrolls = 0; scrolls < maxScrolls; scrolls++) {
+        const newCount = urls.filter((u) => !existingSet.has(normalizeUrl(u))).length;
+        if (newCount >= targetNew) break;
+        await page.evaluate(() => window.scrollBy(0, 1500));
+        await page.waitForTimeout(700);
+        urls = await readAwwwardsSiteUrls(page);
+        if (urls.length === lastCount) {
+          if (++stagnant >= 2) break;
+        } else {
+          stagnant = 0;
+          lastCount = urls.length;
+        }
+      }
+      return urls;
+    }
+
+    return urls.slice(0, max);
+  } finally {
+    await page.close();
+  }
 }
 
 function posterToVideoUrl(posterUrl) {
@@ -285,24 +543,40 @@ function isAwwwardsBlocked(detail, blocklist) {
   return keywords.find((kw) => haystack.includes(kw)) || null;
 }
 
-async function runAwwwardsFlow(globalStats) {
+async function runAwwwardsFlow(globalStats, opts = {}) {
   const cfg = CONFIG.awwwards;
   if (!cfg?.enabled) {
     log('Awwwards 流程：已停用，跳過');
     return;
   }
+  const manual = !!opts.manual;
 
   log('\n========== Awwwards 流程 ==========');
+  if (manual) log('手動模式：每個來源都會撈深一點、跳過已抓過的');
   const folderId = await ensureFolder(cfg.eagleFolderName);
   const { browser, context } = await openHeadlessBrowser();
   const stats = { added: 0, skipped: 0, failed: 0, blocked: 0, videoCount: 0, imageCount: 0 };
 
   try {
-    const sources = (cfg.sources || []).filter((s) => s.enabled);
+    let sources = (cfg.sources || []).filter((s) => s.enabled);
+    // 手動篩選：使用者只勾了部分 sub-source（sotd / nominees）
+    if (manual && Array.isArray(opts.manualFilter?.sources)) {
+      const allowed = new Set(opts.manualFilter.sources);
+      const before = sources.length;
+      sources = sources.filter((s) => allowed.has(s.type));
+      log(`手動篩選 sub-source：${[...allowed].join(', ')}（${before} → ${sources.length}）`);
+    }
     if (!sources.length) {
-      log('⚠ 沒有啟用的 Awwwards source（檢查 config.awwwards.sources）');
+      log('⚠ 沒有啟用的 Awwwards source（檢查 config.awwwards.sources 或手動篩選）');
       return;
     }
+
+    // 預載：把資料夾裡所有「Awwwards: <url>」的細節頁網址收進 Set，待會用來預過濾 listing
+    const existingAwwwardsUrls = await loadExistingUrlsFromAnnotation(
+      folderId,
+      /Awwwards:\s*(https?:\/\/\S+)/i,
+    );
+    log(`現有 ${existingAwwwardsUrls.size} 個 Awwwards 細節頁在資料夾內（預過濾用）`);
 
     for (const src of sources) {
       const listUrl = AWWWARDS_SOURCE_URLS[src.type];
@@ -310,14 +584,30 @@ async function runAwwwardsFlow(globalStats) {
         log(`⚠ 未知 source type："${src.type}"，跳過`);
         continue;
       }
-      log(`\n--- Awwwards ${src.type.toUpperCase()} (${src.maxSites} 筆) ---`);
+      const target = (manual && opts.manualTarget) ? opts.manualTarget : src.maxSites;
+      log(`\n--- Awwwards ${src.type.toUpperCase()} (目標 ${target}${manual ? '，滾到湊夠為止' : ''}) ---`);
       log(`從 ${listUrl} 抓列表…`);
 
-      const detailUrls = await fetchAwwwardsListing(context, listUrl, src.maxSites);
-      log(`找到 ${detailUrls.length} 個細節頁`);
+      const allListed = manual
+        ? await fetchAwwwardsListing(context, listUrl, {
+            targetNew: target,
+            existingSet: existingAwwwardsUrls,
+            maxScrolls: 12,
+          })
+        : await fetchAwwwardsListing(context, listUrl, target);
+      // 預過濾：跳過 Set 裡已有的，省下進 detail 頁
+      const filtered = allListed.filter((u) => !existingAwwwardsUrls.has(normalizeUrl(u)));
+      const prefiltered = allListed.length - filtered.length;
+      log(`  共讀到 ${allListed.length} 個，新的 ${filtered.length} 個，已過濾 ${prefiltered} 個`);
+      if (prefiltered > 0) stats.skipped += prefiltered;
 
-      for (const [i, url] of detailUrls.entries()) {
-        log(`\n[${src.type} ${i + 1}/${detailUrls.length}] ${url}`);
+      let newAddedSites = 0;
+      for (const [i, url] of filtered.entries()) {
+        if (newAddedSites >= target) {
+          log(`\n✓ ${src.type}: 已湊到 ${target} 個新作品，停止`);
+          break;
+        }
+        log(`\n[${src.type} ${i + 1}/${filtered.length}] ${url}`);
         try {
           const detail = await fetchAwwwardsDetail(context, url);
           log(`  作品：${detail.title}`);
@@ -332,12 +622,14 @@ async function runAwwwardsFlow(globalStats) {
             continue;
           }
 
+          // 兜底：若 Awwwards URL 預過濾沒抓到（比方說早期沒寫 annotation），再用 liveUrl 再檢查一次
           if (cfg.skipIfLiveUrlExists && detail.liveUrl) {
             const exist = await callEagle('item_get', { url: detail.liveUrl, limit: 1 });
             const list = exist?.data || exist?.result || exist;
             if (Array.isArray(list) && list.length > 0) {
-              log('  ⏭ Eagle 內已有此作品，跳過');
+              log('  ⏭ Eagle 內已有此作品（liveUrl 比對），跳過');
               stats.skipped++;
+              existingAwwwardsUrls.add(normalizeUrl(url));
               continue;
             }
           }
@@ -355,6 +647,7 @@ async function runAwwwardsFlow(globalStats) {
             detail.liveUrl ? `Live: ${detail.liveUrl}` : null,
             `Awwwards: ${detail.detailUrl}`,
             `抓取時間：${new Date().toISOString().slice(0, 10)}`,
+            opts.runId ? `RunId: ${opts.runId}` : null,
           ].filter(Boolean).join('\n');
 
           const itemTags = [...cfg.extraTags, src.type];
@@ -375,6 +668,8 @@ async function runAwwwardsFlow(globalStats) {
 
           log(`  ✓ 已加入 ${itemsToAdd.length} 筆`);
           stats.added += itemsToAdd.length;
+          newAddedSites++;
+          existingAwwwardsUrls.add(normalizeUrl(url));
           itemsToAdd.forEach((it) => {
             if (it.mediaType === 'video') stats.videoCount++;
             else stats.imageCount++;
@@ -614,7 +909,7 @@ function isMobbinBlocked(flow, blocklist) {
 
 // 處理單一 flow / animation → 寫進 Eagle（共用 latest / category / retry 邏輯）
 async function ingestMobbinFlow(flow, ctx) {
-  const { folderId, baseTags, source, existingStableIds, stats, newlyFailedRef } = ctx;
+  const { folderId, baseTags, source, existingStableIds, stats, newlyFailedRef, runId } = ctx;
   const kindLabel = flow.kind === 'animation' ? '🎬' : '📱';
   const displayName = `${flow.appName || 'Unknown'} - ${flow.stableId.slice(0, 8)}`;
   log(`  [${source}] ${kindLabel} ${displayName}`);
@@ -624,14 +919,14 @@ async function ingestMobbinFlow(flow, ctx) {
   if (blockedBy) {
     log(`    🚫 黑名單命中（${blockedBy}）`);
     stats.blocked++;
-    return;
+    return false;
   }
 
   // 去重
   if (CONFIG.mobbin.skipIfSourceUrlExists && existingStableIds.has(flow.stableId)) {
     log('    ⏭ 已存在');
     stats.skipped++;
-    return;
+    return false;
   }
 
   // HEAD 驗證
@@ -648,7 +943,7 @@ async function ingestMobbinFlow(flow, ctx) {
       failedAt: new Date().toISOString(),
     });
     stats.failed++;
-    return;
+    return false;
   }
 
   const annotation = [
@@ -657,6 +952,7 @@ async function ingestMobbinFlow(flow, ctx) {
     flow.detailUrl ? `Mobbin: ${flow.detailUrl}` : null,
     `stableId: ${flow.stableId}`,
     `抓取時間：${new Date().toISOString().slice(0, 10)}`,
+    runId ? `RunId: ${runId}` : null,
   ].filter(Boolean).join('\n');
 
   const itemTags = [...baseTags, source];
@@ -682,6 +978,7 @@ async function ingestMobbinFlow(flow, ctx) {
   stats.added++;
   if (flow.appName) stats.appCount.add(flow.appName);
   existingStableIds.add(flow.stableId);
+  return true;
 }
 
 // 處理失敗清單 retry（HEAD 仍 fail 就 drop）
@@ -720,20 +1017,37 @@ async function retryFailedUrls(ctx) {
   }
 }
 
-async function runMobbinFlow(globalStats) {
+async function runMobbinFlow(globalStats, opts = {}) {
   const cfg = CONFIG.mobbin;
   if (!cfg?.enabled) {
     log('Mobbin 流程：已停用，跳過');
     return;
   }
+  const manual = !!opts.manual;
 
   log('\n========== Mobbin 流程 ==========');
+  if (manual) log('手動模式：每個來源都會撈深一點、跳過已抓過的');
   if (!fs.existsSync(MOBBIN_PROFILE_DIR)) {
-    log('⚠ Mobbin profile 不存在，請先跑：node bot.js --setup-mobbin');
+    log('⚠ Mobbin profile 不存在，請從 dashboard 點「立刻登入」完成 Mobbin 登入');
     return;
   }
 
-  const folderId = await ensureFolder(cfg.eagleFolderName);
+  // 確保根資料夾存在；子資料夾按 (platform, category) 才動態建
+  const rootFolderName = cfg.eagleFolderName;
+  const folderId = await ensureFolder(rootFolderName);
+  // 子資料夾 cache：key = `${platform}|${category}` → leaf folder id
+  // 第一次用到才建，省 API call
+  const folderCache = new Map();
+  async function getMobbinLeafFolderId(platform, category) {
+    const key = `${platform}|${category}`;
+    if (folderCache.has(key)) return folderCache.get(key);
+    const platLabel = platform === 'ios' ? 'iOS' : 'Web';
+    const catLabel = category === '*' ? '全站最新' : category;
+    const id = await ensureFolderPath([rootFolderName, platLabel, catLabel]);
+    folderCache.set(key, id);
+    return id;
+  }
+
   const context = await openMobbinBrowser(true);
   const stats = { added: 0, skipped: 0, failed: 0, blocked: 0, appCount: new Set() };
   const newlyFailed = [];
@@ -746,17 +1060,17 @@ async function runMobbinFlow(globalStats) {
     const loggedIn = await detectLogin(checkPage);
     await checkPage.close();
     if (!loggedIn) {
-      log('⚠ Mobbin session 失效，請手動跑：node bot.js --setup-mobbin');
+      log('⚠ Mobbin session 失效，請從 dashboard 點「立刻登入」重新登入 Mobbin');
       globalStats.mobbin = stats;
       return;
     }
     log('✓ Mobbin session 有效');
 
-    // 預載已存在的 stableIds（去重用）
+    // 預載已存在的 stableIds（去重用）— 用 tag 查，不受資料夾結構影響
     const existingStableIds = new Set();
     if (cfg.skipIfSourceUrlExists) {
       const existing = await callEagle('item_get', {
-        folders: [folderId],
+        tags: ['mobbin'],
         fullDetails: true,
         limit: 1000,
       });
@@ -766,11 +1080,21 @@ async function runMobbinFlow(globalStats) {
           const m = (it.annotation || '').match(/stableId:\s*([0-9a-f-]{36})/i);
           if (m) existingStableIds.add(m[1]);
         }
-        log(`現有 ${existingStableIds.size} 個 stableId 在 Mobbin 資料夾內`);
+        log(`現有 ${existingStableIds.size} 個 stableId 在 Mobbin 資料夾樹內`);
       }
     }
 
-    const ctx = {
+    // 支援多平台：cfg.platforms 是陣列；若舊版只有 cfg.platform 也接受
+    let platforms = (Array.isArray(cfg.platforms) && cfg.platforms.length
+      ? cfg.platforms
+      : (cfg.platform ? [cfg.platform] : ['ios']));
+    // 手動篩選：使用者指定要跑哪些平台
+    if (manual && Array.isArray(opts.manualFilter?.platforms)) {
+      platforms = opts.manualFilter.platforms.filter((p) => ['ios', 'web'].includes(p));
+      log(`手動篩選平台：${platforms.join(', ')}`);
+    }
+
+    const retryCtx = {
       folderId,
       baseTags: cfg.extraTags,
       existingStableIds,
@@ -779,65 +1103,55 @@ async function runMobbinFlow(globalStats) {
     };
 
     // 1. 先 retry 上次失敗
-    await retryFailedUrls(ctx);
+    await retryFailedUrls(retryCtx);
 
-    // 2. 跑每個啟用的 feed
+    // 2. 跑每個啟用的 feed × 每個 platform
     const feeds = (cfg.feeds || []).filter((f) => f.enabled);
     const blockedCats = (CONFIG.blocklist?.mobbinCategories || []).filter(Boolean);
 
-    for (const feed of feeds) {
-      if (feed.type === 'latest') {
-        log(`\n--- Mobbin Latest (${feed.maxApps} apps × ${feed.screensPerApp} 筆/app) ---`);
-        const url = `${MOBBIN_BASE}/discover/apps/${cfg.platform}/latest`;
-        // 從 latest feed 抓每個 app 1 個 flow video（封面）
-        const flows = await fetchMobbinFlows(context, url, feed.maxApps, 1, 'latest');
-        log(`找到 ${flows.length} 個 flow video`);
-        for (const flow of flows) {
-          await ingestMobbinFlow({ ...flow, kind: 'flow_video' }, { ...ctx, source: 'latest' });
-          // 同一 app 從細節頁額外抓 animations 補滿 screensPerApp
-          const extraNeeded = (feed.screensPerApp || 1) - 1;
-          if (extraNeeded > 0 && flow.detailUrl) {
-            const animations = await fetchAppAnimations(
-              context,
-              flow.detailUrl,
-              extraNeeded,
-              existingStableIds
-            );
-            for (const ani of animations) {
-              await ingestMobbinFlow(
-                { ...ani, appName: flow.appName, detailUrl: flow.detailUrl },
-                { ...ctx, source: 'latest' }
-              );
-            }
+    for (const platform of platforms) {
+      const platformTag = `platform:${platform}`;
+      const ctx = {
+        folderId,
+        baseTags: [...cfg.extraTags, platformTag],
+        existingStableIds,
+        stats,
+        newlyFailedRef: newlyFailed,
+        runId: opts.runId,
+      };
+      log(`\n===== Mobbin 平台：${platform} =====`);
+
+      // 手動模式下使用者有自己挑分類時，獨立的 latest feed 不要硬跑：
+      // category feed 已能處理「全站最新」(* sentinel)，使用者沒勾就代表不想要 latest
+      const manualPickedCats = !!(manual && opts.manualFilter?.categoriesByPlatform);
+      const hasEnabledCategoryFeed = feeds.some((f) => f.type === 'category');
+
+      for (const feed of feeds) {
+        if (feed.type === 'latest') {
+          if (manualPickedCats && hasEnabledCategoryFeed) {
+            log(`\n--- Mobbin Latest [${platform}]：手動模式已指定分類，跳過全站最新（如需最新請勾「全站最新」）---`);
+            continue;
           }
-        }
-      } else if (feed.type === 'category') {
-        const pickedCats = pickCategoriesForWeek(feed.categories, feed.categoriesPerRun || 1)
-          .filter((c) => !blockedCats.includes(c));
-        if (!pickedCats.length) {
-          log('⚠ Mobbin category：本週沒挑到任何分類（檢查 blocklist 是否擋掉全部）');
-          continue;
-        }
-        log(`\n--- Mobbin Category 輪換（本週 ISO 週 ${getIsoWeek()}）---`);
-        log(`本週分類：${pickedCats.join(', ')}`);
-        for (const category of pickedCats) {
-          const encoded = encodeURIComponent(category).replace(/%20/g, '+');
-          const url = `${MOBBIN_BASE}/search/apps/${cfg.platform}?content_type=apps&sort=publishedAt&filter=appCategories.${encoded}`;
-          const flows = await fetchMobbinFlows(
-            context,
-            url,
-            feed.maxAppsPerCategory,
-            1,
-            `category:${category}`
-          );
-          log(`  ${category}: 找到 ${flows.length} 個 flow`);
-          const tag = `category:${category}`;
-          const extraNeeded = (feed.screensPerApp || 1) - 1;
+          // 支援每平台各自的設定：feed.byPlatform[platform] 優先，沒設就用舊版 maxApps / screensPerApp
+          const perPlat = (feed.byPlatform && feed.byPlatform[platform]) || {};
+          const configTarget = perPlat.maxApps ?? feed.maxApps ?? 5;
+          const target = (manual && opts.manualTarget) ? opts.manualTarget : configTarget;
+          const screensPerApp = perPlat.screensPerApp ?? feed.screensPerApp ?? 3;
+          const poolSize = manual ? poolSizeForManual(target) : target;
+          log(`\n--- Mobbin Latest [${platform}] (目標 ${target} apps × ${screensPerApp} 筆/app${manual ? `，池 ${poolSize}` : ''}) ---`);
+          const url = `${MOBBIN_BASE}/discover/apps/${platform}/latest`;
+          const leafFolderId = await getMobbinLeafFolderId(platform, '*');
+          const flows = await fetchMobbinFlows(context, url, poolSize, 1, 'latest');
+          log(`找到 ${flows.length} 個 flow video`);
+          let newAddedApps = 0;
           for (const flow of flows) {
-            await ingestMobbinFlow(
-              { ...flow, kind: 'flow_video' },
-              { ...ctx, source: tag, baseTags: [...cfg.extraTags, `category:${category}`] }
-            );
+            if (manual && newAddedApps >= target) {
+              log(`  ✓ latest [${platform}]: 已湊到 ${target} 個新 app，停止`);
+              break;
+            }
+            const added = await ingestMobbinFlow({ ...flow, kind: 'flow_video' }, { ...ctx, source: 'latest', folderId: leafFolderId });
+            if (added) newAddedApps++;
+            const extraNeeded = (screensPerApp || 1) - 1;
             if (extraNeeded > 0 && flow.detailUrl) {
               const animations = await fetchAppAnimations(
                 context,
@@ -848,8 +1162,85 @@ async function runMobbinFlow(globalStats) {
               for (const ani of animations) {
                 await ingestMobbinFlow(
                   { ...ani, appName: flow.appName, detailUrl: flow.detailUrl },
-                  { ...ctx, source: tag, baseTags: [...cfg.extraTags, `category:${category}`] }
+                  { ...ctx, source: 'latest', folderId: leafFolderId }
                 );
+              }
+            }
+          }
+        } else if (feed.type === 'category') {
+          // 手動篩選優先：使用者直接指定本次要跑哪些分類
+          const manualCats = (manual && opts.manualFilter?.categoriesByPlatform?.[platform]) || null;
+          let pickedCats;
+          if (manualCats) {
+            pickedCats = manualCats.filter((c) => c === '*' || !blockedCats.includes(c));
+            if (!pickedCats.length) {
+              log(`⚠ Mobbin [${platform}]：手動篩選後沒有任何分類`);
+              continue;
+            }
+            log(`\n--- Mobbin 手動選擇 [${platform}] ---`);
+          } else {
+            // 自動：讀 config 分類池，依本週輪換
+            const platCats = (feed.categoriesByPlatform && feed.categoriesByPlatform[platform])
+              || feed.categories
+              || [];
+            if (!platCats.length) {
+              log(`⚠ Mobbin category [${platform}]：沒有設定任何分類，跳過`);
+              continue;
+            }
+            pickedCats = pickCategoriesForWeek(platCats, feed.categoriesPerRun || 1)
+              .filter((c) => !blockedCats.includes(c));
+            if (!pickedCats.length) {
+              log(`⚠ Mobbin category [${platform}]：本週沒挑到任何分類（檢查 blocklist 是否擋掉全部）`);
+              continue;
+            }
+            log(`\n--- Mobbin 來源輪換 [${platform}]（本週 ISO 週 ${getIsoWeek()}）---`);
+          }
+          log(`本週來源：${pickedCats.map((c) => (c === '*' ? '全站最新' : c)).join(', ')}`);
+          for (const category of pickedCats) {
+            const isAll = category === '*';
+            const url = isAll
+              ? `${MOBBIN_BASE}/discover/apps/${platform}/latest`
+              : `${MOBBIN_BASE}/search/apps/${platform}?content_type=apps&sort=publishedAt&filter=appCategories.${encodeURIComponent(category).replace(/%20/g, '+')}`;
+            const label = isAll ? `latest:${platform}` : `category:${category}`;
+            const displayName = isAll ? '全站最新' : category;
+            const target = (manual && opts.manualTarget) ? opts.manualTarget : feed.maxAppsPerCategory;
+            const poolSize = manual ? poolSizeForManual(target) : target;
+            const leafFolderId = await getMobbinLeafFolderId(platform, category);
+            const flows = await fetchMobbinFlows(
+              context,
+              url,
+              poolSize,
+              1,
+              label
+            );
+            log(`  ${displayName}: 找到 ${flows.length} 個 flow${manual ? `（目標 ${target}，撈深一點）` : ''}`);
+            const tag = isAll ? `source:latest` : `category:${category}`;
+            const catBaseTags = [...cfg.extraTags, platformTag, tag];
+            const extraNeeded = (feed.screensPerApp || 1) - 1;
+            let newAddedApps = 0;
+            for (const flow of flows) {
+              if (manual && newAddedApps >= target) {
+                log(`  ✓ ${displayName}: 已湊到 ${target} 個新 app，停止`);
+                break;
+              }
+              const added = await ingestMobbinFlow(
+                { ...flow, kind: 'flow_video' },
+                { ...ctx, source: tag, baseTags: catBaseTags, folderId: leafFolderId }
+              );
+              if (added) newAddedApps++;
+              if (extraNeeded > 0 && flow.detailUrl) {
+                const animations = await fetchAppAnimations(
+                  context,
+                  flow.detailUrl,
+                  extraNeeded,
+                  existingStableIds
+                );
+                for (const ani of animations) {
+                  await ingestMobbinFlow(
+                    { ...ani, appName: flow.appName, detailUrl: flow.detailUrl },
+                    { ...ctx, source: tag, baseTags: catBaseTags, folderId: leafFolderId }
+                  );
+                }
               }
             }
           }
@@ -870,26 +1261,179 @@ async function runMobbinFlow(globalStats) {
   globalStats.mobbin = stats;
 }
 
+// 從 item 的 tags 推出該歸到哪個 (platform, category) 子資料夾
+function classifyMobbinItem(tags) {
+  let platform = null;
+  let category = null;
+  for (const t of tags || []) {
+    if (t.startsWith('platform:')) platform = t.slice('platform:'.length);
+    else if (t.startsWith('category:')) category = t.slice('category:'.length);
+    else if (t === 'source:latest' || t === 'latest') category = '*';
+  }
+  // 舊資料沒寫 platform → 預設 ios（早期只有 iOS）
+  if (!platform) platform = 'ios';
+  // 沒有任何分類 / latest 標記 → 當成全站最新
+  if (!category) category = '*';
+  return { platform, category };
+}
+
+// 把現有 Mobbin 資料夾裡的 item 依 tag 重新分類進 Mobbin/<平台>/<分類> 子資料夾
+async function reorganizeMobbin() {
+  const cfg = CONFIG.mobbin;
+  const rootFolderName = cfg?.eagleFolderName || 'Mobbin';
+  log('=== 重新整理 Mobbin 資料夾結構 ===');
+
+  // 抓所有有 mobbin tag 的 item
+  const res = await callEagle('item_get', {
+    tags: ['mobbin'],
+    fullDetails: true,
+    limit: 1000, // Eagle API 上限就是 1000，超過會回參數錯誤
+  });
+  const items = res?.data || res?.result || res;
+  if (!Array.isArray(items) || !items.length) {
+    log('沒有任何帶 mobbin tag 的 item，結束');
+    return;
+  }
+  log(`找到 ${items.length} 個 Mobbin item，開始分類…`);
+
+  // 依目標子資料夾分組
+  const groups = new Map(); // key = `${platform}|${category}` → { platform, category, ids: [] }
+  for (const it of items) {
+    const { platform, category } = classifyMobbinItem(it.tags);
+    const key = `${platform}|${category}`;
+    if (!groups.has(key)) groups.set(key, { platform, category, ids: [] });
+    groups.get(key).ids.push(it.id);
+  }
+
+  log(`分成 ${groups.size} 組：`);
+  for (const { platform, category, ids } of groups.values()) {
+    const catLabel = category === '*' ? '全站最新' : category;
+    log(`  ${platform === 'ios' ? 'iOS' : 'Web'} / ${catLabel} — ${ids.length} 筆`);
+  }
+
+  // 逐組建好子資料夾、批次搬移
+  const folderCache = new Map();
+  let moved = 0;
+  for (const { platform, category, ids } of groups.values()) {
+    const platLabel = platform === 'ios' ? 'iOS' : 'Web';
+    const catLabel = category === '*' ? '全站最新' : category;
+    const cacheKey = `${platform}|${category}`;
+    let leafId = folderCache.get(cacheKey);
+    if (!leafId) {
+      leafId = await ensureFolderPath([rootFolderName, platLabel, catLabel]);
+      folderCache.set(cacheKey, leafId);
+    }
+    // item_update 一次帶整組（folders 用 shared 參數，items 只給 id）
+    const BATCH = 50;
+    for (let i = 0; i < ids.length; i += BATCH) {
+      const slice = ids.slice(i, i + BATCH);
+      await callEagle('item_update', {
+        folders: [leafId],
+        items: slice.map((id) => ({ id })),
+      });
+      moved += slice.length;
+      log(`  ${platLabel} / ${catLabel}：已搬 ${Math.min(i + BATCH, ids.length)}/${ids.length}`);
+    }
+  }
+
+  log(`\n✓ 完成：共重新分類 ${moved} 筆到 ${groups.size} 個子資料夾`);
+}
+
+// 通用：依某個 tag 前綴把單一來源資料夾分進子資料夾（Godly / Land-book 共用）
+async function reorganizeByTagPrefix({ rootName, sourceTag, prefix, fallback }) {
+  log(`=== 重新整理 ${rootName} 資料夾結構 ===`);
+  const res = await callEagle('item_get', {
+    tags: [sourceTag],
+    fullDetails: true,
+    limit: 1000, // Eagle API 上限
+  });
+  const items = res?.data || res?.result || res;
+  if (!Array.isArray(items) || !items.length) {
+    log(`沒有任何帶 ${sourceTag} tag 的 item，結束`);
+    return;
+  }
+  log(`找到 ${items.length} 個 ${rootName} item，開始分類…`);
+
+  const groups = new Map(); // label → ids[]
+  for (const it of items) {
+    const hit = (it.tags || []).find((t) => t.startsWith(prefix));
+    const label = hit ? hit.slice(prefix.length).trim() || fallback : fallback;
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(it.id);
+  }
+
+  log(`分成 ${groups.size} 組：`);
+  for (const [label, ids] of groups) log(`  ${label} — ${ids.length} 筆`);
+
+  let moved = 0;
+  for (const [label, ids] of groups) {
+    const leafId = await ensureFolderPath([rootName, label]);
+    const BATCH = 50;
+    for (let i = 0; i < ids.length; i += BATCH) {
+      const slice = ids.slice(i, i + BATCH);
+      await callEagle('item_update', {
+        folders: [leafId],
+        items: slice.map((id) => ({ id })),
+      });
+      moved += slice.length;
+      log(`  ${label}：已搬 ${Math.min(i + BATCH, ids.length)}/${ids.length}`);
+    }
+  }
+  log(`\n✓ 完成：共重新分類 ${moved} 筆到 ${groups.size} 個子資料夾`);
+}
+
+const reorganizeGodly = () =>
+  reorganizeByTagPrefix({ rootName: CONFIG.godly?.eagleFolderName || 'Godly', sourceTag: 'godly', prefix: 'godly-type:', fallback: '未分類' });
+
+const reorganizeLandbook = () =>
+  reorganizeByTagPrefix({ rootName: CONFIG.landbook?.eagleFolderName || 'Land-book', sourceTag: 'landbook', prefix: 'lb-cat:', fallback: '未分類' });
+
 // =====================================================================
 //                          Godly.website 流程
 // =====================================================================
 
 const GODLY_BASE = 'https://godly.website';
 
-async function fetchGodlyListing(context, max) {
-  const page = await context.newPage();
-  await page.goto(GODLY_BASE + '/', { waitUntil: 'domcontentloaded', timeout: 30000 });
-  await page.waitForTimeout(2000);
-  // 滾動載入更多卡片
-  for (let i = 0; i < Math.ceil(max / 6); i++) {
-    await page.evaluate(() => window.scrollBy(0, 1500));
-    await page.waitForTimeout(700);
-  }
+async function readGodlyUrls(page) {
   const hrefs = await page.$$eval('a[href^="/website/"]', (els) =>
     els.map((a) => a.getAttribute('href'))
   );
-  await page.close();
-  return [...new Set(hrefs)].slice(0, max).map((h) => GODLY_BASE + h);
+  return [...new Set(hrefs)].map((h) => GODLY_BASE + h);
+}
+
+// 「滾到湊夠新項目為止」：每滾一輪讀完整列表，filter 後若新的 < targetNew 就繼續
+async function fetchGodlyListing(context, { targetNew, existingSet, maxScrolls = 12 } = {}) {
+  const page = await context.newPage();
+  try {
+    await page.goto(GODLY_BASE + '/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(2000);
+
+    let urls = await readGodlyUrls(page);
+    let lastCount = urls.length;
+    let stagnant = 0;
+
+    for (let scrolls = 0; scrolls < maxScrolls; scrolls++) {
+      const newCount = existingSet
+        ? urls.filter((u) => !existingSet.has(normalizeUrl(u))).length
+        : urls.length;
+      if (newCount >= (targetNew || 0)) break;
+
+      await page.evaluate(() => window.scrollBy(0, 1500));
+      await page.waitForTimeout(700);
+      urls = await readGodlyUrls(page);
+
+      if (urls.length === lastCount) {
+        if (++stagnant >= 2) break;
+      } else {
+        stagnant = 0;
+        lastCount = urls.length;
+      }
+    }
+
+    return urls;
+  } finally {
+    await page.close();
+  }
 }
 
 async function fetchGodlyDetail(context, detailUrl) {
@@ -909,6 +1453,15 @@ async function fetchGodlyDetail(context, detailUrl) {
         null;
       const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute('content');
 
+      // 分類：Godly 的 metadata chip 是 <a href="/?types=[...]">，文字就是人類可讀標籤
+      const types = [
+        ...new Set(
+          Array.from(document.querySelectorAll('a[href*="?types="]'))
+            .map((a) => a.textContent.trim())
+            .filter((t) => t && t.length < 30)
+        ),
+      ];
+
       // 找 Visit 連結（去掉 ?ref=godly query）
       let liveUrl = null;
       const anchors = Array.from(document.querySelectorAll('a[href^="http"]')).filter(
@@ -925,6 +1478,7 @@ async function fetchGodlyDetail(context, detailUrl) {
         mediaUrl: videoSrc || ogImage,
         mediaType: videoSrc ? 'video' : 'image',
         liveUrl,
+        types,
       };
     });
     return { ...data, detailUrl };
@@ -933,21 +1487,43 @@ async function fetchGodlyDetail(context, detailUrl) {
   }
 }
 
-async function runGodlyFlow(globalStats) {
+async function runGodlyFlow(globalStats, opts = {}) {
   const cfg = CONFIG.godly;
   if (!cfg?.enabled) {
     log('Godly 流程：已停用，跳過');
     return;
   }
+  const manual = !!opts.manual;
+  const target = (manual && opts.manualTarget) ? opts.manualTarget : cfg.maxSites;
   log('\n========== Godly 流程 ==========');
+  if (manual) log(`手動模式：滾到湊夠 ${target} 個新項目為止（最多滾 12 次）`);
   const folderId = await ensureFolder(cfg.eagleFolderName);
   const { browser, context } = await openHeadlessBrowser();
   const stats = { added: 0, skipped: 0, failed: 0, blocked: 0, videoCount: 0, imageCount: 0 };
   try {
+    // 預載：用 annotation 裡的「Godly: <url>」當去重 key，這樣可以在進 detail 頁前先過濾
+    const existingGodlyUrls = await loadExistingUrlsFromAnnotation(
+      folderId,
+      /Godly:\s*(https?:\/\/\S+)/i,
+    );
+    log(`現有 ${existingGodlyUrls.size} 個 Godly 細節頁在資料夾內（預過濾用）`);
+
     log(`從 ${GODLY_BASE}/ 抓列表…`);
-    const urls = await fetchGodlyListing(context, cfg.maxSites);
-    log(`找到 ${urls.length} 個細節頁`);
+    const allUrls = await fetchGodlyListing(context, {
+      targetNew: target,
+      existingSet: existingGodlyUrls,
+      maxScrolls: manual ? 12 : 3,
+    });
+    const urls = allUrls.filter((u) => !existingGodlyUrls.has(normalizeUrl(u)));
+    const prefiltered = allUrls.length - urls.length;
+    log(`  滾完共讀到 ${allUrls.length} 個，新的 ${urls.length} 個，已過濾 ${prefiltered} 個`);
+    if (prefiltered > 0) stats.skipped += prefiltered;
+    let newAdded = 0;
     for (const [i, url] of urls.entries()) {
+      if (newAdded >= target) {
+        log(`\n✓ 已湊到 ${target} 個新項目，停止`);
+        break;
+      }
       log(`\n[godly ${i + 1}/${urls.length}] ${url}`);
       try {
         const detail = await fetchGodlyDetail(context, url);
@@ -961,12 +1537,14 @@ async function runGodlyFlow(globalStats) {
           stats.blocked++;
           continue;
         }
+        // 兜底：若 godly URL 預過濾沒抓到（舊資料），再用 liveUrl 再檢查一次
         if (cfg.skipIfLiveUrlExists && detail.liveUrl) {
           const exist = await callEagle('item_get', { url: detail.liveUrl, limit: 1 });
           const list = exist?.data || exist?.result || exist;
           if (Array.isArray(list) && list.length > 0) {
-            log('  ⏭ 已存在');
+            log('  ⏭ 已存在（liveUrl 比對）');
             stats.skipped++;
+            existingGodlyUrls.add(normalizeUrl(url));
             continue;
           }
         }
@@ -977,14 +1555,18 @@ async function runGodlyFlow(globalStats) {
         }
         await callEagle('item_add', {
           folders: [folderId],
-          tags: cfg.extraTags,
+          tags: [
+            ...cfg.extraTags,
+            ...(detail.types || []).map((t) => `godly-type:${t}`),
+          ],
           annotation: [
             `作品：${detail.title}`,
             `來源：Godly.website`,
             `Live: ${detail.liveUrl || '-'}`,
             `Godly: ${detail.detailUrl}`,
             `抓取時間：${new Date().toISOString().slice(0, 10)}`,
-          ].join('\n'),
+            opts.runId ? `RunId: ${opts.runId}` : null,
+          ].filter(Boolean).join('\n'),
           items: [
             {
               source: {
@@ -998,6 +1580,8 @@ async function runGodlyFlow(globalStats) {
         });
         log('  ✓ 已加入 Eagle');
         stats.added++;
+        newAdded++;
+        existingGodlyUrls.add(normalizeUrl(url));
         if (detail.mediaType === 'video') stats.videoCount++;
         else stats.imageCount++;
       } catch (e) {
@@ -1032,22 +1616,14 @@ function parseLandbookSlug(href) {
   return { id, title };
 }
 
-async function fetchLandbookCards(context, max) {
-  const page = await context.newPage();
-  await page.goto(LANDBOOK_BASE + '/', { waitUntil: 'domcontentloaded', timeout: 60000 });
-  // Land-book 首頁靠 Cloudflare，等他放行
-  await page.waitForTimeout(8000);
-  for (let i = 0; i < Math.ceil(max / 12); i++) {
-    await page.evaluate(() => window.scrollBy(0, 1500));
-    await page.waitForTimeout(500);
-  }
-  const cards = await page.evaluate(() => {
+// 從 Land-book 首頁讀出當前 DOM 上的所有卡片
+function readLandbookCardsFromPage(page) {
+  return page.evaluate(() => {
     const out = [];
     const anchors = document.querySelectorAll('a[href^="/websites/"]');
     const seen = new Set();
     for (const a of anchors) {
       const href = a.getAttribute('href');
-      // 過濾掉同頁 anchor、無 slug、明顯不是作品卡片的連結
       if (!href || href.includes('#') || !/^\/websites\/\d+-.+/.test(href)) continue;
       if (seen.has(href)) continue;
       seen.add(href);
@@ -1062,29 +1638,97 @@ async function fetchLandbookCards(context, max) {
       const img = card?.querySelector('img');
       const imgSrc = img?.src || img?.getAttribute('data-src') || null;
       if (!imgSrc || /favicon|logo|icon/i.test(imgSrc)) continue;
-      out.push({ href, imgSrc });
+      // 類別：img alt 後綴「- <類別> design inspiration」是 Land-book 的權威分類徽章
+      const alt = img?.getAttribute('alt') || '';
+      const m = alt.match(/-\s*([A-Za-z]+)\s+design inspiration\s*$/i);
+      const raw = m ? m[1].toLowerCase() : '';
+      const cat =
+        raw === 'landing' ? 'Landing Page'
+        : raw === 'ecommerce' ? 'Ecommerce'
+        : raw === 'portfolio' ? 'Portfolio'
+        : raw === 'template' ? 'Template'
+        : raw === 'blog' ? 'Blog'
+        : 'Other';
+      out.push({ href, imgSrc, cat });
     }
     return out;
   });
-  await page.close();
-  return cards.slice(0, max);
 }
 
-async function runLandbookFlow(globalStats) {
+// 「滾到湊夠新卡為止」：每滾一輪重讀整頁卡片，filter 後若新的 < targetNew 就繼續滾
+// 連續兩輪沒新增就視為到底，提前結束
+async function fetchLandbookCards(context, { targetNew, existingSet, maxScrolls = 12 } = {}) {
+  const page = await context.newPage();
+  try {
+    await page.goto(LANDBOOK_BASE + '/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    // Land-book 首頁靠 Cloudflare，等他放行
+    await page.waitForTimeout(8000);
+
+    let cards = await readLandbookCardsFromPage(page);
+    let lastCount = cards.length;
+    let stagnant = 0;
+
+    for (let scrolls = 0; scrolls < maxScrolls; scrolls++) {
+      const newCount = existingSet
+        ? cards.filter((c) => !existingSet.has(normalizeUrl(LANDBOOK_BASE + c.href))).length
+        : cards.length;
+      if (newCount >= (targetNew || 0)) break;
+
+      await page.evaluate(() => window.scrollBy(0, 1500));
+      await page.waitForTimeout(700);
+      cards = await readLandbookCardsFromPage(page);
+
+      if (cards.length === lastCount) {
+        if (++stagnant >= 2) break;
+      } else {
+        stagnant = 0;
+        lastCount = cards.length;
+      }
+    }
+
+    return cards;
+  } finally {
+    await page.close();
+  }
+}
+
+async function runLandbookFlow(globalStats, opts = {}) {
   const cfg = CONFIG.landbook;
   if (!cfg?.enabled) {
     log('Land-book 流程：已停用，跳過');
     return;
   }
+  const manual = !!opts.manual;
+  const target = (manual && opts.manualTarget) ? opts.manualTarget : cfg.maxSites;
   log('\n========== Land-book 流程 ==========');
+  if (manual) log(`手動模式：滾到湊夠 ${target} 個新項目為止（最多滾 12 次）`);
   const folderId = await ensureFolder(cfg.eagleFolderName);
   const { browser, context } = await openHeadlessBrowser();
   const stats = { added: 0, skipped: 0, failed: 0, blocked: 0 };
   try {
+    // 預載：把資料夾裡所有「Detail: <url>」收進 Set（Land-book 的 detail URL 從 listing 就拿得到，最容易預過濾）
+    const existingDetailUrls = await loadExistingUrlsFromAnnotation(
+      folderId,
+      /Detail:\s*(https?:\/\/\S+)/i,
+    );
+    log(`現有 ${existingDetailUrls.size} 個 Land-book detail 在資料夾內（預過濾用）`);
+
     log(`從 ${LANDBOOK_BASE}/ 抓首頁卡片…`);
-    const cards = await fetchLandbookCards(context, cfg.maxSites);
-    log(`找到 ${cards.length} 張卡片`);
+    const allCards = await fetchLandbookCards(context, {
+      targetNew: target,
+      existingSet: existingDetailUrls,
+      maxScrolls: manual ? 12 : 3,
+    });
+    const cards = allCards.filter((c) => !existingDetailUrls.has(normalizeUrl(LANDBOOK_BASE + c.href)));
+    const prefiltered = allCards.length - cards.length;
+    log(`  滾完共讀到 ${allCards.length} 張，新的 ${cards.length} 張，已過濾 ${prefiltered} 張`);
+    if (prefiltered > 0) stats.skipped += prefiltered;
+    let newAdded = 0;
     for (const [i, card] of cards.entries()) {
+      if (newAdded >= target) {
+        log(`\n✓ 已湊到 ${target} 個新項目，停止`);
+        break;
+      }
       const detailUrl = LANDBOOK_BASE + card.href;
       const { title } = parseLandbookSlug(card.href);
       log(`\n[landbook ${i + 1}/${cards.length}] ${title}`);
@@ -1095,24 +1739,27 @@ async function runLandbookFlow(globalStats) {
           stats.blocked++;
           continue;
         }
+        // 兜底：預載漏掉的舊資料還是會被擋住
         if (cfg.skipIfSourceUrlExists) {
           const exist = await callEagle('item_get', { url: detailUrl, limit: 1 });
           const list = exist?.data || exist?.result || exist;
           if (Array.isArray(list) && list.length > 0) {
             log('  ⏭ 已存在');
             stats.skipped++;
+            existingDetailUrls.add(normalizeUrl(detailUrl));
             continue;
           }
         }
         await callEagle('item_add', {
           folders: [folderId],
-          tags: cfg.extraTags,
+          tags: [...cfg.extraTags, `lb-cat:${card.cat || 'Other'}`],
           annotation: [
             `作品：${title}`,
             `來源：Land-book`,
             `Detail: ${detailUrl}`,
             `抓取時間：${new Date().toISOString().slice(0, 10)}`,
-          ].join('\n'),
+            opts.runId ? `RunId: ${opts.runId}` : null,
+          ].filter(Boolean).join('\n'),
           items: [
             {
               source: { type: 'url', url: card.imgSrc, website: detailUrl },
@@ -1122,6 +1769,8 @@ async function runLandbookFlow(globalStats) {
         });
         log('  ✓ 已加入 Eagle');
         stats.added++;
+        newAdded++;
+        existingDetailUrls.add(normalizeUrl(detailUrl));
       } catch (e) {
         log('  ❌ 失敗：', e.message);
         stats.failed++;
@@ -1170,7 +1819,7 @@ async function runMobbinSearch(rawQuery, count) {
   log(`=== Mobbin 主題搜尋：${pattern}（${count} 筆）===`);
 
   if (!fs.existsSync(MOBBIN_PROFILE_DIR)) {
-    log('⚠ Mobbin profile 不存在，請先跑：node bot.js --setup-mobbin');
+    log('⚠ Mobbin profile 不存在，請從 dashboard 點「立刻登入」完成 Mobbin 登入');
     return;
   }
 
@@ -1186,7 +1835,7 @@ async function runMobbinSearch(rawQuery, count) {
     const loggedIn = await detectLogin(checkPage);
     await checkPage.close();
     if (!loggedIn) {
-      log('⚠ Mobbin session 失效，請手動跑：node bot.js --setup-mobbin');
+      log('⚠ Mobbin session 失效，請從 dashboard 點「立刻登入」重新登入 Mobbin');
       return;
     }
 
@@ -1204,7 +1853,8 @@ async function runMobbinSearch(rawQuery, count) {
     }
 
     const encoded = encodeURIComponent(pattern).replace(/%20/g, '+');
-    const url = `${MOBBIN_BASE}/search/apps/${cfg.platform}?content_type=screens&sort=trending&filter=screenPatterns.${encoded}`;
+    const platform = (Array.isArray(cfg.platforms) && cfg.platforms[0]) || cfg.platform || 'ios';
+    const url = `${MOBBIN_BASE}/search/apps/${platform}?content_type=screens&sort=trending&filter=screenPatterns.${encoded}`;
     log(`訪問 ${url}`);
 
     // 直接走 fetchAppAnimations 邏輯（search 結果頁也是 animations 形式）
@@ -1311,7 +1961,7 @@ async function generateMonthlyReport(yearMonth) {
     CONFIG.landbook?.eagleFolderName,
   ].filter(Boolean);
 
-  const tree = await callEagle('folder_get', { getAllHierarchy: true });
+  const tree = await callEagle('folder_get', { getAllHierarchy: true, fullDetails: true });
   const tList = tree?.data || tree?.result || tree;
   const folderIds = [];
   for (const name of folderNames) {
@@ -1446,6 +2096,24 @@ ${stats.samples.map((s) => `- ${s.name} · .${s.ext} · [${s.tags.join(', ')}]`)
 //                      Dashboard 預覽輔助
 // =====================================================================
 
+// 從 annotation 抽出「網頁連結」（點擊縮圖跳轉用）
+function extractWebsiteUrl(annotation, source) {
+  if (!annotation) return null;
+  const get = (label) => {
+    const m = annotation.match(new RegExp('^' + label + ':\\s*(.+)$', 'm'));
+    if (!m) return null;
+    const v = m[1].trim();
+    if (!v || v === '-') return null;
+    return v;
+  };
+  // Awwwards / Godly：優先 Live（實際作品網站）
+  if (source === 'awwwards') return get('Live') || get('Awwwards');
+  if (source === 'godly')    return get('Live') || get('Godly');
+  if (source === 'mobbin')   return get('Mobbin');
+  if (source === 'landbook') return get('Detail');
+  return get('Live') || get('Detail') || null;
+}
+
 // 撈所有來源資料夾、依日期遞減回近 N 天的 items（包含可直接播的 source URL）
 async function fetchRecentItems(days) {
   const folderNames = [
@@ -1455,7 +2123,7 @@ async function fetchRecentItems(days) {
     CONFIG.landbook?.eagleFolderName,
   ].filter(Boolean);
 
-  const tree = await callEagle('folder_get', { getAllHierarchy: true });
+  const tree = await callEagle('folder_get', { getAllHierarchy: true, fullDetails: true });
   const tList = tree?.data || tree?.result || tree;
   const folderIds = [];
   for (const name of folderNames) {
@@ -1486,19 +2154,32 @@ async function fetchRecentItems(days) {
       else if (tags.includes('mobbin')) source = 'mobbin';
       else if (tags.includes('godly')) source = 'godly';
       else if (tags.includes('landbook')) source = 'landbook';
-      // sourceUrl: Eagle 把原始 URL 存在 url 欄位
+      // sourceUrl: Eagle 把原始 URL 存在 url 欄位（媒體檔網址，hover 影片用）
       const sourceUrl = it.url || null;
+      const annotation = it.annotation || '';
+      // websiteUrl: 從 annotation 解析「網頁連結」(點擊用)
+      // Awwwards / Godly 優先 Live（實際作品網站），其次來源頁
+      // Mobbin / Land-book 用來源頁
+      const websiteUrl = extractWebsiteUrl(annotation, source);
+      // Eagle 內的精確時間：modificationTime 是 ms。沒有就退回 annotation 日期或 0
+      const addedAt = it.modificationTime || it.importedAt || it.btime || ms || 0;
+      // 從 annotation 抽 RunId：同一次 bot 啟動寫進去的都是同一個值
+      const runIdMatch = (it.annotation || '').match(/RunId:\s*(\S+)/);
+      const runId = runIdMatch ? runIdMatch[1] : null;
       return {
         id: it.id,
         name: it.name,
         date,
         ms,
+        addedAt,
+        runId,
         ext,
         isVideo,
         tags,
         source,
         sourceUrl,
-        annotation: it.annotation || '',
+        websiteUrl,
+        annotation,
       };
     })
     .filter((x) => x.ms >= cutoffMs)
@@ -1523,7 +2204,7 @@ async function previewMonthlyMarkdown(yearMonth) {
     CONFIG.godly?.eagleFolderName,
     CONFIG.landbook?.eagleFolderName,
   ].filter(Boolean);
-  const tree = await callEagle('folder_get', { getAllHierarchy: true });
+  const tree = await callEagle('folder_get', { getAllHierarchy: true, fullDetails: true });
   const tList = tree?.data || tree?.result || tree;
   const folderIds = [];
   for (const name of folderNames) {
@@ -1582,6 +2263,88 @@ ${topApps.length ? topApps.map(([app, n]) => `- ${app} × ${n}`).join('\n') : '*
 }
 
 // =====================================================================
+//                      自訂排程（dashboard 套用）
+// =====================================================================
+
+const LAUNCHD_LABEL = 'com.user.eagle-inspiration';
+const LAUNCHD_PLIST = path.join(os.homedir(), 'Library/LaunchAgents', `${LAUNCHD_LABEL}.plist`);
+
+function buildLaunchdPlist(schedule) {
+  const hour = clamp(parseInt(schedule.hour, 10) || 9, 0, 23);
+  const minute = clamp(parseInt(schedule.minute, 10) || 0, 0, 59);
+  const nodePath = process.execPath;
+  const nodeDir = path.dirname(nodePath);
+  let intervalXml;
+  if (schedule.frequency === 'daily') {
+    intervalXml = `        <key>Hour</key>\n        <integer>${hour}</integer>\n        <key>Minute</key>\n        <integer>${minute}</integer>`;
+  } else if (schedule.frequency === 'monthly') {
+    const day = clamp(parseInt(schedule.day, 10) || 1, 1, 28);
+    intervalXml = `        <key>Day</key>\n        <integer>${day}</integer>\n        <key>Hour</key>\n        <integer>${hour}</integer>\n        <key>Minute</key>\n        <integer>${minute}</integer>`;
+  } else {
+    const weekday = clamp(parseInt(schedule.weekday, 10) ?? 1, 0, 6);
+    intervalXml = `        <key>Weekday</key>\n        <integer>${weekday}</integer>\n        <key>Hour</key>\n        <integer>${hour}</integer>\n        <key>Minute</key>\n        <integer>${minute}</integer>`;
+  }
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>${LAUNCHD_LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${nodePath}</string>
+        <string>${path.join(ROOT, 'bot.js')}</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>${ROOT}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>${nodeDir}:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+    <key>StartCalendarInterval</key>
+    <dict>
+${intervalXml}
+    </dict>
+    <key>StandardOutPath</key>
+    <string>${path.join(ROOT, 'logs/bot.log')}</string>
+    <key>StandardErrorPath</key>
+    <string>${path.join(ROOT, 'logs/bot.log')}</string>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
+`;
+}
+
+function clamp(n, lo, hi) {
+  return Math.max(lo, Math.min(hi, n));
+}
+
+function applySchedule(schedule) {
+  const plist = buildLaunchdPlist(schedule);
+  const launchAgents = path.join(os.homedir(), 'Library/LaunchAgents');
+  if (!fs.existsSync(launchAgents)) fs.mkdirSync(launchAgents, { recursive: true });
+  fs.writeFileSync(LAUNCHD_PLIST, plist);
+  spawnSync('launchctl', ['unload', LAUNCHD_PLIST]);
+  const r = spawnSync('launchctl', ['load', LAUNCHD_PLIST]);
+  if (r.status !== 0) {
+    throw new Error('launchctl load 失敗：' + (r.stderr?.toString() || `exit ${r.status}`));
+  }
+  return true;
+}
+
+function describeSchedule(s) {
+  const hh = String(s.hour ?? 9).padStart(2, '0');
+  const mm = String(s.minute ?? 0).padStart(2, '0');
+  const time = `${hh}:${mm}`;
+  if (s.frequency === 'daily') return `每天 ${time}`;
+  if (s.frequency === 'monthly') return `每月 ${s.day ?? 1} 號 ${time}`;
+  const names = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+  return `每${names[s.weekday ?? 1]} ${time}`;
+}
+
+// =====================================================================
 //                      Web Dashboard（--config-ui）
 // =====================================================================
 
@@ -1589,6 +2352,123 @@ async function startConfigUI() {
   const http = require('http');
   const PORT = 3030;
   const HTML_PATH = path.join(ROOT, 'dashboard.html');
+
+  // 「立刻跑一次」用的執行狀態（記憶體中保留最近一次）
+  const runState = {
+    running: false,
+    lines: [],
+    startedAt: null,
+    finishedAt: null,
+    exitCode: null,
+    child: null,
+  };
+
+  // Mobbin 登入流程狀態
+  const mobbinSetupState = {
+    running: false,
+    message: '',
+    startedAt: null,
+    finishedAt: null,
+    loggedIn: null,
+  };
+
+  const startMobbinSetup = () => {
+    if (mobbinSetupState.running) return false;
+    mobbinSetupState.running = true;
+    mobbinSetupState.message = '正在開啟 Chrome…';
+    mobbinSetupState.startedAt = new Date().toISOString();
+    mobbinSetupState.finishedAt = null;
+    mobbinSetupState.loggedIn = null;
+
+    (async () => {
+      let context = null;
+      try {
+        context = await openMobbinBrowser(false);
+        const page = await context.newPage();
+        await page.goto(MOBBIN_BASE, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        mobbinSetupState.message = '請在剛開啟的 Chrome 視窗內登入 Mobbin';
+
+        const maxWaitMs = 6 * 60 * 1000;
+        const pollIntervalMs = 3000;
+        const startedAt = Date.now();
+        let loggedIn = false;
+        while (Date.now() - startedAt < maxWaitMs) {
+          loggedIn = await detectLogin(page);
+          if (loggedIn) break;
+          const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
+          mobbinSetupState.message = `等候登入中…（已等 ${elapsedSec} 秒，最多 360 秒）`;
+          await new Promise((r) => setTimeout(r, pollIntervalMs));
+        }
+
+        mobbinSetupState.loggedIn = loggedIn;
+        mobbinSetupState.message = loggedIn
+          ? '✓ 登入成功，已關閉 Chrome'
+          : '⚠ 超時未偵測到登入，請再試一次';
+      } catch (e) {
+        mobbinSetupState.loggedIn = false;
+        mobbinSetupState.message = '❌ 啟動失敗：' + e.message;
+      } finally {
+        try { if (context) await context.close(); } catch { /* ignore */ }
+        mobbinSetupState.running = false;
+        mobbinSetupState.finishedAt = new Date().toISOString();
+      }
+    })();
+
+    return true;
+  };
+  const MAX_LINES = 2000;
+  const pushLine = (line) => {
+    runState.lines.push(`[${new Date().toISOString().slice(11, 19)}] ${line}`);
+    if (runState.lines.length > MAX_LINES) runState.lines.splice(0, runState.lines.length - MAX_LINES);
+  };
+  // 共用的 spawn + 接 log + 維護 runState
+  const beginRun = (spawnArgs, label, env, source = null) => {
+    if (runState.running) return false;
+    runState.running = true;
+    runState.lines = [];
+    runState.source = source;
+    runState.startedAt = new Date().toISOString();
+    runState.finishedAt = null;
+    runState.exitCode = null;
+    pushLine(`=== ${label} 開始 ===`);
+    const child = spawn(process.execPath, spawnArgs, { cwd: ROOT, env: env || process.env });
+    runState.child = child;
+    const onData = (chunk) => {
+      const text = chunk.toString('utf8');
+      for (const line of text.split(/\r?\n/)) {
+        if (line) pushLine(line);
+        if (/Mobbin session 失效|Mobbin profile 不存在/.test(line)) {
+          mobbinSetupState.loggedIn = false;
+          mobbinSetupState.message = '⚠ Session 失效，請重新登入 Mobbin';
+        }
+      }
+    };
+    child.stdout.on('data', onData);
+    child.stderr.on('data', onData);
+    child.on('close', (code) => {
+      pushLine(`=== 結束（exit code ${code}）===`);
+      runState.running = false;
+      runState.exitCode = code;
+      runState.finishedAt = new Date().toISOString();
+      runState.child = null;
+    });
+    return true;
+  };
+
+  const startRun = (source = null, manualTarget = null, manualFilter = null) => {
+    const label = source ? `只跑 ${source}${manualTarget ? `（目標 ${manualTarget}）` : ''}` : '立刻跑一次';
+    const spawnArgs = [path.join(ROOT, 'bot.js')];
+    if (source) spawnArgs.push('--only', source);
+    if (source && manualTarget) spawnArgs.push('--manual-target', String(manualTarget));
+    const env = { ...process.env };
+    if (source && manualFilter && typeof manualFilter === 'object') {
+      env.MANUAL_FILTER = JSON.stringify(manualFilter);
+    }
+    return beginRun(spawnArgs, label, env, source);
+  };
+
+  const startReorganizeMobbin = () =>
+    beginRun([path.join(ROOT, 'bot.js'), '--reorganize-mobbin'], '重新整理 Mobbin 分類', process.env, 'reorganize');
 
   const server = http.createServer(async (req, res) => {
     const sendJSON = (obj, status = 200) => {
@@ -1615,13 +2495,33 @@ async function startConfigUI() {
         fs.writeFileSync(path.join(ROOT, 'config.json'), JSON.stringify(parsed, null, 2) + '\n');
         sendJSON({ ok: true });
       } else if (req.method === 'GET' && req.url === '/api/status') {
-        // 簡單 status：mobbin profile 是否存在、failed-urls 數量
+        // mobbinSetup = profile 目錄存在 AND 最近沒被偵測到 session 失效
+        const profileExists = fs.existsSync(MOBBIN_PROFILE_DIR);
+        const effectiveLoggedIn = mobbinSetupState.loggedIn === false ? false : profileExists;
         const status = {
-          mobbinSetup: fs.existsSync(MOBBIN_PROFILE_DIR),
+          mobbinSetup: effectiveLoggedIn,
+          mobbinSetupRunning: mobbinSetupState.running,
+          mobbinSetupMessage: mobbinSetupState.message,
+          mobbinSetupFinishedAt: mobbinSetupState.finishedAt,
+          mobbinSetupLoggedIn: mobbinSetupState.loggedIn,
           failedCount: loadFailedUrls().length,
           isoWeek: getIsoWeek(),
         };
         sendJSON(status);
+      } else if (req.method === 'POST' && req.url === '/api/mobbin/setup') {
+        const started = startMobbinSetup();
+        if (!started) {
+          sendJSON({ ok: false, error: 'Mobbin 登入流程已在跑了', state: mobbinSetupState }, 409);
+        } else {
+          sendJSON({ ok: true, state: mobbinSetupState });
+        }
+      } else if (req.method === 'POST' && req.url === '/api/reorganize-mobbin') {
+        const started = startReorganizeMobbin();
+        if (!started) {
+          sendJSON({ ok: false, error: '已有任務在跑' }, 409);
+        } else {
+          sendJSON({ ok: true, startedAt: runState.startedAt, source: 'reorganize' });
+        }
       } else if (req.method === 'GET' && req.url.startsWith('/api/thumb')) {
         const u = new URL(req.url, 'http://x');
         const id = u.searchParams.get('id');
@@ -1656,6 +2556,65 @@ async function startConfigUI() {
         const ym = u.searchParams.get('month') || new Date().toISOString().slice(0, 7);
         const md = await previewMonthlyMarkdown(ym);
         sendJSON({ month: ym, markdown: md });
+      } else if (req.method === 'POST' && req.url === '/api/schedule') {
+        const chunks = [];
+        for await (const c of req) chunks.push(c);
+        const body = Buffer.concat(chunks).toString('utf8');
+        const schedule = JSON.parse(body);
+        try {
+          applySchedule(schedule);
+          // 寫進 config.json 讓設定持久化
+          const cfgPath = path.join(ROOT, 'config.json');
+          const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+          cfg.schedule = schedule;
+          fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n');
+          sendJSON({ ok: true, summary: describeSchedule(schedule) });
+        } catch (e) {
+          sendJSON({ ok: false, error: e.message }, 500);
+        }
+      } else if (req.method === 'POST' && req.url === '/api/run') {
+        const chunks = [];
+        for await (const c of req) chunks.push(c);
+        const raw = Buffer.concat(chunks).toString('utf8');
+        let source = null;
+        let manualTarget = null;
+        let manualFilter = null;
+        if (raw) {
+          try {
+            const body = JSON.parse(raw);
+            if (body && body.source) source = String(body.source);
+            if (body && body.manualTarget != null) {
+              const n = parseInt(body.manualTarget, 10);
+              if (Number.isFinite(n) && n > 0) manualTarget = n;
+            }
+            if (body && body.manualFilter && typeof body.manualFilter === 'object') {
+              manualFilter = body.manualFilter;
+            }
+          } catch { /* ignore body parse error */ }
+        }
+        const VALID = ['awwwards', 'mobbin', 'godly', 'landbook'];
+        if (source && !VALID.includes(source)) {
+          sendJSON({ ok: false, error: `未知的來源：${source}` }, 400);
+        } else {
+          const started = startRun(source, manualTarget, manualFilter);
+          if (!started) {
+            sendJSON({ ok: false, error: '已有任務在跑' }, 409);
+          } else {
+            sendJSON({ ok: true, startedAt: runState.startedAt, source: runState.source });
+          }
+        }
+      } else if (req.method === 'GET' && req.url.startsWith('/api/run/status')) {
+        const u = new URL(req.url, 'http://x');
+        const since = Math.max(0, parseInt(u.searchParams.get('since') || '0', 10));
+        sendJSON({
+          running: runState.running,
+          source: runState.source || null,
+          total: runState.lines.length,
+          lines: runState.lines.slice(since),
+          startedAt: runState.startedAt,
+          finishedAt: runState.finishedAt,
+          exitCode: runState.exitCode,
+        });
       } else {
         res.writeHead(404);
         res.end('Not Found');
@@ -1715,51 +2674,97 @@ async function main() {
     return;
   }
 
+  // --reorganize-mobbin：把現有 Mobbin 資料夾裡的 item 依 tag 重新分類進子資料夾
+  if (args.includes('--reorganize-mobbin')) {
+    await reorganizeMobbin();
+    return;
+  }
+
+  // --reorganize-godly / --reorganize-landbook：依分類 tag 分進子資料夾
+  if (args.includes('--reorganize-godly')) {
+    await reorganizeGodly();
+    return;
+  }
+  if (args.includes('--reorganize-landbook')) {
+    await reorganizeLandbook();
+    return;
+  }
+
   // --config-ui
   if (args.includes('--config-ui')) {
     await startConfigUI();
     return;
   }
 
+  // --only <source>：只跑單一來源（awwwards / mobbin / godly / landbook）
+  const onlyIdx = args.indexOf('--only');
+  const onlySource = onlyIdx >= 0 ? args[onlyIdx + 1] : null;
+  const VALID_SOURCES = ['awwwards', 'mobbin', 'godly', 'landbook'];
+  if (onlySource && !VALID_SOURCES.includes(onlySource)) {
+    log(`❌ 未知的 --only 來源：${onlySource}（支援：${VALID_SOURCES.join(', ')}）`);
+    process.exit(1);
+  }
+  const shouldRun = (src) => !onlySource || onlySource === src;
+
+  // --manual-target <N>：手動模式下使用者指定的目標數量（覆蓋 config）
+  const manualTargetIdx = args.indexOf('--manual-target');
+  const manualTargetRaw = manualTargetIdx >= 0 ? parseInt(args[manualTargetIdx + 1], 10) : null;
+  const manualTarget = Number.isFinite(manualTargetRaw) && manualTargetRaw > 0 ? manualTargetRaw : null;
+
+  // MANUAL_FILTER env：手動模式下使用者選的篩選條件（Awwwards 來源 / Mobbin 平台+分類）
+  let manualFilter = null;
+  if (process.env.MANUAL_FILTER) {
+    try {
+      manualFilter = JSON.parse(process.env.MANUAL_FILTER);
+    } catch (e) {
+      log('⚠ 解析 MANUAL_FILTER 失敗：' + e.message);
+    }
+  }
+
   try {
     await callEagle('get_app_info', {});
   } catch (e) {
-    log('❌ Eagle 連線失敗（請確認 Eagle 已開啟且 MCP plugin 已啟用）：', e.message);
-    notify('Eagle Inspiration Bot 失敗', 'Eagle 連線失敗，請確認 Eagle 已開啟');
+    log('❌ Eagle 連線失敗（請確認 Eagle App 已開啟）：', e.message);
+    notify('Eagle Inspiration Bot 失敗', 'Eagle 連線失敗，請確認 Eagle App 已開啟');
     process.exit(1);
   }
 
   const globalStats = { awwwards: null, mobbin: null };
 
-  try {
-    await runAwwwardsFlow(globalStats);
-  } catch (e) {
-    log('❌ Awwwards 流程錯誤：', e.message);
+  // 每次 bot 啟動產生一個 runId（ISO 時間戳）；同一次 run 的所有 item annotation 都會寫進這個 id
+  // dashboard 用它精確分組「上次抓取」，不會受同一天的 annotation 日期影響
+  const runId = new Date().toISOString();
+  log(`本次 runId：${runId}`);
+
+  // 手動單跑某個來源時，每個流程會挖更深、跳過已抓過的，直到湊到目標數
+  // manualTarget 不為 null 時，會覆蓋 config 裡的 target（讓使用者每次可以調量）
+  // manualFilter 不為 null 時，會覆蓋 config 裡的篩選條件（Awwwards 來源 / Mobbin 平台與分類）
+  const flowOpts = { manual: !!onlySource, manualTarget, manualFilter, runId };
+
+  if (shouldRun('awwwards')) {
+    try { await runAwwwardsFlow(globalStats, flowOpts); }
+    catch (e) { log('❌ Awwwards 流程錯誤：', e.message); }
+  }
+  if (shouldRun('mobbin')) {
+    try { await runMobbinFlow(globalStats, flowOpts); }
+    catch (e) { log('❌ Mobbin 流程錯誤：', e.message); }
+  }
+  if (shouldRun('godly')) {
+    try { await runGodlyFlow(globalStats, flowOpts); }
+    catch (e) { log('❌ Godly 流程錯誤：', e.message); }
+  }
+  if (shouldRun('landbook')) {
+    try { await runLandbookFlow(globalStats, flowOpts); }
+    catch (e) { log('❌ Land-book 流程錯誤：', e.message); }
   }
 
-  try {
-    await runMobbinFlow(globalStats);
-  } catch (e) {
-    log('❌ Mobbin 流程錯誤：', e.message);
-  }
-
-  try {
-    await runGodlyFlow(globalStats);
-  } catch (e) {
-    log('❌ Godly 流程錯誤：', e.message);
-  }
-
-  try {
-    await runLandbookFlow(globalStats);
-  } catch (e) {
-    log('❌ Land-book 流程錯誤：', e.message);
-  }
-
-  // 跑完順便補上個月的月報（若尚未存在）
-  try {
-    await maybeAutoGenerateLastMonthReport();
-  } catch (e) {
-    log('⚠ 月報自動生成失敗：', e.message);
+  // 跑完順便補上個月的月報（單來源跑就跳過，避免每次手動跑都觸發）
+  if (!onlySource) {
+    try {
+      await maybeAutoGenerateLastMonthReport();
+    } catch (e) {
+      log('⚠ 月報自動生成失敗：', e.message);
+    }
   }
 
   // 桌面通知
