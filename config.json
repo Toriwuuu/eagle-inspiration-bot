@@ -1,5 +1,12 @@
 {
   "notifyOnFinish": true,
+  "schedule": {
+    "frequency": "weekly",
+    "weekday": 1,
+    "day": 1,
+    "hour": 9,
+    "minute": 0
+  },
   "awwwards": {
     "enabled": true,
     "eagleFolderName": "Awwwards",
@@ -23,7 +30,7 @@
   },
   "mobbin": {
     "enabled": true,
-    "platform": "ios",
+    "platforms": ["ios", "web"],
     "eagleFolderName": "Mobbin",
     "extraTags": [
       "mobbin"
@@ -39,15 +46,25 @@
       {
         "type": "category",
         "enabled": true,
-        "categories": [
-          "Health & Fitness",
-          "Travel & Transportation",
-          "Lifestyle",
-          "Shopping",
-          "Food & Drink",
-          "Finance",
-          "Productivity"
-        ],
+        "categoriesByPlatform": {
+          "ios": [
+            "Health & Fitness",
+            "Travel & Transportation",
+            "Lifestyle",
+            "Shopping",
+            "Food & Drink",
+            "Finance",
+            "Productivity"
+          ],
+          "web": [
+            "SaaS",
+            "AI",
+            "E-Commerce",
+            "Productivity",
+            "Finance",
+            "Marketing"
+          ]
+        },
         "categoriesPerRun": 2,
         "maxAppsPerCategory": 3
       }
